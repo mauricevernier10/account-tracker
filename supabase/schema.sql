@@ -22,7 +22,10 @@ create index if not exists idx_holdings_user_date on holdings(user_id, statement
 create index if not exists idx_holdings_isin      on holdings(user_id, isin);
 
 -- ── Transactions ──────────────────────────────────────────────────────────────
-create type if not exists direction as enum ('buy', 'sell');
+do $$ begin
+  create type direction as enum ('buy', 'sell');
+exception when duplicate_object then null;
+end $$;
 
 create table if not exists transactions (
   id         uuid primary key default uuid_generate_v4(),
