@@ -24,8 +24,7 @@ export default function UploadButton({ userId }: Props) {
     form.append("file", file);
 
     try {
-      const parserUrl = process.env.NEXT_PUBLIC_PARSER_URL ?? "http://localhost:8000";
-      const res = await fetch(`${parserUrl}/parse/${type}`, {
+      const res = await fetch(`/api/parse/${type}`, {
         method: "POST",
         body: form,
       });
