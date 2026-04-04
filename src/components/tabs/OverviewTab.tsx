@@ -42,7 +42,7 @@ export default function OverviewTab({ userId }: Props) {
   useEffect(() => {
     supabase
       .from("holdings")
-      .select("statement_date")
+      .select("*")
       .eq("user_id", userId)
       .order("statement_date", { ascending: false })
       .then(({ data }) => {
