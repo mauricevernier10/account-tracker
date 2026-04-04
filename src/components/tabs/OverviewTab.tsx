@@ -3,9 +3,20 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Database } from "@/types/supabase";
 
-type Holding = Database["public"]["Tables"]["holdings"]["Row"];
+interface Holding {
+  id: string;
+  user_id: string;
+  statement_date: string;
+  isin: string;
+  name: string;
+  ticker: string | null;
+  shares: number;
+  price_eur: number;
+  market_value_eur: number;
+  depot: string | null;
+  created_at: string;
+}
 
 interface Props {
   userId: string;
@@ -40,19 +51,22 @@ export default function OverviewTab({ userId }: Props) {
 
   // Load available statement dates
   useEffect(() => {
-    supabase
-      .from("holdings")
-      .select("*")
-      .eq("user_id", userId)
-      .order("statement_date", { ascending: false })
-      .then(({ data }: { data: Holding[] | null }) => {
-        if (!data) return;
-        const dates = [...new Set(data.map((r) => r.statement_date))].sort(
-          (a, b) => b.localeCompare(a)
-        );
-        setStatements(dates);
-        if (dates.length > 0) setSelectedDate(dates[0]);
-      });
+    async function load() {
+      const { data } = await supabase
+        .from("holdings")
+        .select("statement_date")
+        .eq("user_id", userId)
+        .order("statement_date", { ascending: false })
+        .returns<{ statement_date: string }[]>();
+
+      if (!data) return;
+      const dates = [...new Set(data.map((r) => r.statement_date))].sort(
+        (a, b) => b.localeCompare(a)
+      );
+      setStatements(dates);
+      if (dates.length > 0) setSelectedDate(dates[0]);
+    }
+    load();
   }, [userId]);
 
   // Load holdings for selected date
@@ -60,32 +74,37 @@ export default function OverviewTab({ userId }: Props) {
     if (!selectedDate) return;
     setLoading(true);
 
-    supabase
-      .from("holdings")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("statement_date", selectedDate)
-      .order("market_value_eur", { ascending: false })
-      .then(({ data }) => {
-        if (!data) return;
-        const total = data.reduce((s, r) => s + r.market_value_eur, 0);
-        setSummary({ date: selectedDate, totalValue: total, holdings: data });
-        setLoading(false);
-      });
+    async function load() {
+      const { data } = await supabase
+        .from("holdings")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("statement_date", selectedDate!)
+        .order("market_value_eur", { ascending: false })
+        .returns<Holding[]>();
+
+      if (!data) return;
+      const total = data.reduce((s, r) => s + r.market_value_eur, 0);
+      setSummary({ date: selectedDate!, totalValue: total, holdings: data });
+      setLoading(false);
+    }
+    load();
 
     // Load previous statement value for delta
     const idx = statements.indexOf(selectedDate);
     if (idx < statements.length - 1) {
       const prevDate = statements[idx + 1];
-      supabase
-        .from("holdings")
-        .select("market_value_eur")
-        .eq("user_id", userId)
-        .eq("statement_date", prevDate)
-        .then(({ data }) => {
-          if (data)
-            setPrevValue(data.reduce((s, r) => s + r.market_value_eur, 0));
-        });
+      async function loadPrev() {
+        const { data } = await supabase
+          .from("holdings")
+          .select("market_value_eur")
+          .eq("user_id", userId)
+          .eq("statement_date", prevDate)
+          .returns<{ market_value_eur: number }[]>();
+
+        if (data) setPrevValue(data.reduce((s, r) => s + r.market_value_eur, 0));
+      }
+      loadPrev();
     } else {
       setPrevValue(null);
     }
@@ -108,8 +127,10 @@ export default function OverviewTab({ userId }: Props) {
     );
   }
 
-  const delta = prevValue != null && summary ? summary.totalValue - prevValue : null;
-  const deltaPct = delta != null && prevValue ? (delta / prevValue) * 100 : null;
+  const delta =
+    prevValue != null && summary ? summary.totalValue - prevValue : null;
+  const deltaPct =
+    delta != null && prevValue ? (delta / prevValue) * 100 : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -185,10 +206,15 @@ export default function OverviewTab({ userId }: Props) {
               </thead>
               <tbody>
                 {summary.holdings.map((h) => (
-                  <tr key={h.isin} className="border-b last:border-0 hover:bg-muted/30">
+                  <tr
+                    key={h.isin}
+                    className="border-b last:border-0 hover:bg-muted/30"
+                  >
                     <td className="px-4 py-2">
                       <div className="font-medium">{h.name}</div>
-                      <div className="text-xs text-muted-foreground">{h.ticker ?? h.isin}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {h.ticker ?? h.isin}
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {fmt(h.market_value_eur)}
@@ -197,7 +223,9 @@ export default function OverviewTab({ userId }: Props) {
                       {((h.market_value_eur / summary.totalValue) * 100).toFixed(1)}%
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
-                      {h.shares.toLocaleString("de-DE", { maximumFractionDigits: 4 })}
+                      {h.shares.toLocaleString("de-DE", {
+                        maximumFractionDigits: 4,
+                      })}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
                       {fmt(h.price_eur)}
