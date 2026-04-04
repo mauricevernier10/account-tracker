@@ -45,7 +45,7 @@ export default function OverviewTab({ userId }: Props) {
       .select("*")
       .eq("user_id", userId)
       .order("statement_date", { ascending: false })
-      .then(({ data }) => {
+      .then(({ data }: { data: Holding[] | null }) => {
         if (!data) return;
         const dates = [...new Set(data.map((r) => r.statement_date))].sort(
           (a, b) => b.localeCompare(a)
