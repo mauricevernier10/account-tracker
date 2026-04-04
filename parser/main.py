@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from parse_depot import parse_pdf as _parse_depot
-from parse_transactions import parse_transactions as _parse_transactions
+from parse_transactions import parse_account_statement as _parse_transactions
 
 app = FastAPI(title="Account Tracker Parser", version="1.0.0")
 
