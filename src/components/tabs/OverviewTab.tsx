@@ -90,51 +90,81 @@ export default function OverviewTab({ userId }: Props) {
       {/* KPI cards */}
       {currentPeriod && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {/* Total Value */}
           <Card>
             <CardHeader className="pb-1">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Portfolio Value
-              </CardTitle>
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Value</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-semibold">{fmt(currentPeriod.value)}</p>
-              {delta != null && deltaPct != null && (
-                <p className={`text-sm mt-0.5 ${delta >= 0 ? "text-green-600" : "text-red-500"}`}>
-                  {fmt(delta)} ({fmtPct(deltaPct)})
-                </p>
-              )}
+              {prevPeriod && (() => {
+                const d = currentPeriod.value - prevPeriod.value;
+                const pct = (d / prevPeriod.value) * 100;
+                return (
+                  <p className={`text-sm mt-0.5 ${d >= 0 ? "text-green-600" : "text-red-500"}`}>
+                    {fmt(d)} ({fmtPct(pct)}) from last statement
+                  </p>
+                );
+              })()}
             </CardContent>
           </Card>
+
+          {/* Positions */}
           <Card>
             <CardHeader className="pb-1">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Positions
-              </CardTitle>
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Positions</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-semibold">{currentPeriod.positions}</p>
+              {prevPeriod && (() => {
+                const d = currentPeriod.positions - prevPeriod.positions;
+                return (
+                  <p className={`text-sm mt-0.5 ${d > 0 ? "text-green-600" : d < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                    {d >= 0 ? "+" : ""}{d} from last statement
+                  </p>
+                );
+              })()}
             </CardContent>
           </Card>
+
+          {/* Price Delta (current period) */}
           <Card>
             <CardHeader className="pb-1">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Cum. Price Effect
-              </CardTitle>
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price Delta</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className={`text-2xl font-semibold ${currentPeriod.cumPriceEffect >= 0 ? "text-green-600" : "text-red-500"}`}>
-                {fmt(currentPeriod.cumPriceEffect)}
+              <p className={`text-2xl font-semibold ${currentPeriod.priceEffect >= 0 ? "text-green-600" : "text-red-500"}`}>
+                {fmt(currentPeriod.priceEffect)}
               </p>
+              {prevPeriod && currentPeriod.value > 0 && (() => {
+                const pct = (currentPeriod.priceEffect / prevPeriod.value) * 100;
+                return (
+                  <p className={`text-sm mt-0.5 ${pct >= 0 ? "text-green-600" : "text-red-500"}`}>
+                    {fmtPct(pct)} from last statement
+                  </p>
+                );
+              })()}
             </CardContent>
           </Card>
+
+          {/* Net Invested (current period) */}
           <Card>
             <CardHeader className="pb-1">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Net Invested
-              </CardTitle>
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Net Invested</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-semibold">{fmt(currentPeriod.cumInvested)}</p>
+              <p className="text-2xl font-semibold">
+                {currentPeriod.netInvested >= 0 ? "+" : ""}{fmt(currentPeriod.netInvested)}
+              </p>
+              {prevPeriod && (() => {
+                const d = currentPeriod.netInvested - prevPeriod.netInvested;
+                const pct = prevPeriod.netInvested !== 0 ? (d / Math.abs(prevPeriod.netInvested)) * 100 : 0;
+                return (
+                  <p className={`text-sm mt-0.5 ${d >= 0 ? "text-green-600" : "text-red-500"}`}>
+                    {fmtPct(pct)} from last statement
+                  </p>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
