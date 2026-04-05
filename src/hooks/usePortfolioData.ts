@@ -84,14 +84,14 @@ export function usePortfolioData(userId: string) {
         totals[d] = byDate[d].reduce((s, h) => s + h.market_value_eur, 0);
       }
 
-      // Net invested per period from transactions
+      // Net invested per period from transactions.
+      // Only bucket transactions strictly BETWEEN statement dates (i >= 1).
+      // Period 0 is always seeded as: netInvested = full portfolio value, priceEffect = 0.
       const netPerPeriod: Record<string, number> = {};
       if (txns) {
         for (const tx of txns) {
-          // Find which period this transaction belongs to
-          // (after prev statement date, up to and including this statement date)
-          for (let i = 0; i < dates.length; i++) {
-            const from = i === 0 ? "1970-01-01" : dates[i - 1];
+          for (let i = 1; i < dates.length; i++) {
+            const from = dates[i - 1];
             const to = dates[i];
             if (tx.date > from && tx.date <= to) {
               const sign = tx.direction === "buy" ? 1 : -1;
@@ -112,8 +112,9 @@ export function usePortfolioData(userId: string) {
         const value = totals[d];
         const prevValue = i > 0 ? totals[dates[i - 1]] : 0;
 
-        // Period 0: treat initial value as net invested, price effect = 0
+        // Period 0: full portfolio value treated as initial investment, no price effect
         const netInvested = i === 0 ? value : (netPerPeriod[d] ?? 0);
+        // price_effect = v_curr - v_prev - buys + sells = v_curr - v_prev - netInvested
         const priceEffect = i === 0 ? 0 : value - prevValue - netInvested;
 
         cumInvested += netInvested;
