@@ -23,7 +23,7 @@ create index if not exists idx_holdings_isin      on holdings(user_id, isin);
 
 -- ── Transactions ──────────────────────────────────────────────────────────────
 do $$ begin
-  create type direction as enum ('buy', 'sell');
+  create type direction as enum ('buy', 'sell', 'dividend', 'interest', 'transfer');
 exception when duplicate_object then null;
 end $$;
 

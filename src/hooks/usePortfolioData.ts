@@ -20,7 +20,7 @@ export interface Holding {
 export interface Transaction {
   date: string;
   isin: string;
-  direction: "buy" | "sell";
+  direction: "buy" | "sell" | "dividend" | "interest" | "transfer";
   amount_eur: number;
 }
 

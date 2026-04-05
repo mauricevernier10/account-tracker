@@ -33,7 +33,7 @@ export interface Database {
           date: string;
           isin: string;
           name: string;
-          direction: "buy" | "sell";
+          direction: "buy" | "sell" | "dividend" | "interest" | "transfer";
           shares: number | null;
           price_eur: number | null;
           amount_eur: number;
