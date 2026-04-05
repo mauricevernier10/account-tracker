@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -40,23 +40,26 @@ export default function UploadButton({ userId }: Props) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<UploadType>("portfolio");
   const [files, setFiles] = useState<FileStatus[]>([]);
+  const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isUploading = files.some((f) => f.status === "uploading" || f.status === "pending");
 
-  async function handleFiles(selected: FileList) {
-    const newFiles: FileStatus[] = Array.from(selected).map((f) => ({
+  async function handleFiles(selected: File[]) {
+    const pdfs = selected.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+    if (!pdfs.length) return;
+
+    const newFiles: FileStatus[] = pdfs.map((f) => ({
       name: f.name,
       status: "pending",
       message: "",
     }));
     setFiles(newFiles);
 
-    // Process sequentially
-    for (let i = 0; i < selected.length; i++) {
+    for (let i = 0; i < pdfs.length; i++) {
       setFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, status: "uploading" } : f));
       try {
-        const result = await processFile(selected[i], type, userId);
+        const result = await processFile(pdfs[i], type, userId);
         setFiles((prev) =>
           prev.map((f, idx) => idx === i ? { ...f, status: "done", message: `✓ ${result.count} rows` } : f)
         );
@@ -74,6 +77,13 @@ export default function UploadButton({ userId }: Props) {
     setFiles([]);
     if (inputRef.current) inputRef.current.value = "";
   }
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const dropped = Array.from(e.dataTransfer.files);
+    handleFiles(dropped);
+  }, [type, userId]);
 
   return (
     <div className="relative">
@@ -105,11 +115,23 @@ export default function UploadButton({ userId }: Props) {
             </button>
           </div>
 
-          <p className="text-xs text-muted-foreground mb-3">
-            {type === "portfolio"
-              ? "Select one or more monthly portfolio PDFs"
-              : "Select one or more account statement PDFs"}
-          </p>
+          {/* Drop zone */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            onClick={() => { reset(); inputRef.current?.click(); }}
+            className={`cursor-pointer rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors ${
+              dragging
+                ? "border-primary bg-primary/5"
+                : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+            }`}
+          >
+            <p className="text-sm font-medium text-muted-foreground">
+              Drop PDFs here
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
+          </div>
 
           <input
             ref={inputRef}
@@ -117,32 +139,24 @@ export default function UploadButton({ userId }: Props) {
             accept=".pdf"
             multiple
             className="hidden"
-            onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); }}
+            onChange={(e) => {
+              if (e.target.files?.length) handleFiles(Array.from(e.target.files));
+            }}
           />
-
-          <Button
-            size="sm"
-            className="w-full"
-            disabled={isUploading}
-            onClick={() => { reset(); inputRef.current?.click(); }}
-          >
-            {isUploading ? "Uploading…" : "Choose PDFs"}
-          </Button>
 
           {/* Per-file status list */}
           {files.length > 0 && (
-            <ul className="mt-3 space-y-1.5">
+            <ul className="mt-3 space-y-1.5 max-h-48 overflow-y-auto">
               {files.map((f, i) => (
                 <li key={i} className="flex items-center gap-2 text-xs">
                   <span className="shrink-0">
-                    {f.status === "pending" && "⏳"}
-                    {f.status === "uploading" && "⏳"}
+                    {(f.status === "pending" || f.status === "uploading") && "⏳"}
                     {f.status === "done" && "✅"}
                     {f.status === "error" && "❌"}
                   </span>
                   <span className="truncate text-muted-foreground flex-1">{f.name}</span>
                   {f.message && (
-                    <span className={f.status === "error" ? "text-red-500 shrink-0" : "text-green-600 shrink-0"}>
+                    <span className={`shrink-0 ${f.status === "error" ? "text-red-500" : "text-green-600"}`}>
                       {f.message}
                     </span>
                   )}
