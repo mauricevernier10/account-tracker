@@ -14,18 +14,20 @@ export async function POST(req: NextRequest) {
 
   const uid = userId ?? user.id;
 
+  const nn = (v: unknown) => (v == null || (typeof v === "number" && isNaN(v)) ? null : v);
+
   const records = rows
     .map((r: Record<string, unknown>) => ({
       user_id: uid,
       date: r.date,
-      isin: r.isin ?? null,
+      isin: nn(r.isin),
       name: String(r.name ?? r.isin ?? r.type ?? "Unknown"),
       direction: String(r.direction ?? ""),
-      shares: r.shares ?? r.quantity ?? null,
-      price_eur: r.price_eur ?? r.price ?? null,
+      shares: nn(r.shares ?? r.quantity),
+      price_eur: nn(r.price_eur ?? r.price),
       amount_eur: Math.abs(Number(r.amount_eur ?? r.amount ?? 0)),
       approx: Boolean(r.approx ?? false),
-      tx_type: r.tx_type ?? r.type ?? null,
+      tx_type: nn(r.tx_type ?? r.type),
     }))
     .filter(
       (r: Record<string, unknown>) =>

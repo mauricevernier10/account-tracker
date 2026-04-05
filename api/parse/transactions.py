@@ -1,6 +1,7 @@
 import cgi
 import datetime
 import json
+import math
 import sys
 import tempfile
 from http.server import BaseHTTPRequestHandler
@@ -10,6 +11,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "parser"))
 
 import pandas as pd  # noqa: E402
 from parse_transactions import parse_account_statement  # noqa: E402
+
+
+def _sanitize(obj):
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    return obj
 
 
 class _Encoder(json.JSONEncoder):
@@ -46,7 +57,7 @@ class handler(BaseHTTPRequestHandler):
             df = parse_account_statement(tmp_path)
             if "date" in df.columns:
                 df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-            rows = df.where(pd.notna(df), None).to_dict(orient="records")
+            rows = _sanitize(df.where(pd.notna(df), None).to_dict(orient="records"))
             self._json(200, {"type": "transactions", "rows": rows})
         except Exception as e:
             self._json(422, {"detail": str(e)})
