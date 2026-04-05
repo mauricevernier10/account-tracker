@@ -22,18 +22,13 @@ create index if not exists idx_holdings_user_date on holdings(user_id, statement
 create index if not exists idx_holdings_isin      on holdings(user_id, isin);
 
 -- ── Transactions ──────────────────────────────────────────────────────────────
-do $$ begin
-  create type direction as enum ('buy', 'sell', 'dividend', 'interest', 'transfer');
-exception when duplicate_object then null;
-end $$;
-
 create table if not exists transactions (
   id         uuid primary key default uuid_generate_v4(),
   user_id    uuid not null references auth.users(id) on delete cascade,
   date       date not null,
   isin       text,                 -- null for non-security transactions (dividends, transfers)
   name       text not null,
-  direction  direction not null,
+  direction  text not null,        -- buy | sell | dividend | interest | deposit | withdrawal | etc.
   shares     numeric,
   price_eur  numeric,
   amount_eur numeric not null,

@@ -31,9 +31,9 @@ export interface Database {
           id: string;
           user_id: string;
           date: string;
-          isin: string;
+          isin: string | null;
           name: string;
-          direction: "buy" | "sell" | "dividend" | "interest" | "transfer";
+          direction: string;
           shares: number | null;
           price_eur: number | null;
           amount_eur: number;
@@ -58,8 +58,6 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
-    Enums: {
-      direction: "buy" | "sell";
-    };
+    Enums: Record<string, never>;
   };
 }
