@@ -1,14 +1,22 @@
-import sys
-import json
-import tempfile
 import cgi
-from pathlib import Path
+import datetime
+import json
+import sys
+import tempfile
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "parser"))
 
-import pandas as pd
-from parse_transactions import parse_account_statement
+import pandas as pd  # noqa: E402
+from parse_transactions import parse_account_statement  # noqa: E402
+
+
+class _Encoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (datetime.date, datetime.datetime)):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 class handler(BaseHTTPRequestHandler):
@@ -46,7 +54,7 @@ class handler(BaseHTTPRequestHandler):
             tmp_path.unlink(missing_ok=True)
 
     def _json(self, status: int, body: dict):
-        payload = json.dumps(body).encode()
+        payload = json.dumps(body, cls=_Encoder).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
