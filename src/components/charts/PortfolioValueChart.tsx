@@ -45,8 +45,8 @@ function CustomDot(props: any) {
       cx={cx}
       cy={cy}
       r={isSelected ? 5 : 3}
-      fill={isSelected ? "hsl(var(--primary))" : "hsl(var(--background))"}
-      stroke="hsl(var(--primary))"
+      fill={isSelected ? "#2563eb" : "#ffffff"}
+      stroke="#2563eb"
       strokeWidth={2}
     />
   );
@@ -60,7 +60,7 @@ export default function PortfolioValueChart({ data, selectedDate }: Props) {
   return (
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
         <XAxis
           dataKey="label"
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
@@ -79,17 +79,17 @@ export default function PortfolioValueChart({ data, selectedDate }: Props) {
         <Tooltip content={<CustomTooltip />} />
         <ReferenceLine
           x={data.find((d) => d.date === selectedDate)?.label}
-          stroke="hsl(var(--primary))"
+          stroke="#2563eb"
           strokeDasharray="4 2"
           strokeOpacity={0.5}
         />
         <Line
           type="monotone"
           dataKey="value"
-          stroke="hsl(var(--primary))"
+          stroke="#2563eb"
           strokeWidth={2}
           dot={<CustomDot selectedDate={selectedDate} />}
-          activeDot={{ r: 5 }}
+          activeDot={{ r: 5, fill: "#2563eb" }}
         />
       </LineChart>
     </ResponsiveContainer>
