@@ -2,5 +2,9 @@
   "functions": {
     "api/parse/portfolio.py": { "maxDuration": 30 },
     "api/parse/transactions.py": { "maxDuration": 30 }
-  }
+  },
+  "rewrites": [
+    { "source": "/api/parse/portfolio", "destination": "/api/parse/portfolio" },
+    { "source": "/api/parse/transactions", "destination": "/api/parse/transactions" }
+  ]
 }
