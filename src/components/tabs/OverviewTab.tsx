@@ -127,27 +127,24 @@ export default function OverviewTab({ userId }: Props) {
             </CardContent>
           </Card>
 
-          {/* Price Delta (current period) */}
+          {/* Price Delta — tx-based: total_value - prev_total - buys + sells */}
           <Card>
             <CardHeader className="pb-1">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price Delta</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className={`text-2xl font-semibold ${currentPeriod.priceEffect >= 0 ? "text-green-600" : "text-red-500"}`}>
-                {fmt(currentPeriod.priceEffect)}
+              <p className={`text-2xl font-semibold ${currentPeriod.priceDelta >= 0 ? "text-green-600" : "text-red-500"}`}>
+                {currentPeriod.priceDelta >= 0 ? "+" : ""}{fmt(currentPeriod.priceDelta)}
               </p>
-              {prevPeriod && currentPeriod.value > 0 && (() => {
-                const pct = (currentPeriod.priceEffect / prevPeriod.value) * 100;
-                return (
-                  <p className={`text-sm mt-0.5 ${pct >= 0 ? "text-green-600" : "text-red-500"}`}>
-                    {fmtPct(pct)} from last statement
-                  </p>
-                );
-              })()}
+              {prevPeriod && (
+                <p className={`text-sm mt-0.5 ${currentPeriod.priceDelta >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  {fmtPct((currentPeriod.priceDelta / prevPeriod.value) * 100)} from last statement
+                </p>
+              )}
             </CardContent>
           </Card>
 
-          {/* Net Invested (current period) */}
+          {/* Net Invested — tx-based: buys - sells for this period */}
           <Card>
             <CardHeader className="pb-1">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Net Invested</CardTitle>
@@ -156,15 +153,11 @@ export default function OverviewTab({ userId }: Props) {
               <p className="text-2xl font-semibold">
                 {currentPeriod.netInvested >= 0 ? "+" : ""}{fmt(currentPeriod.netInvested)}
               </p>
-              {prevPeriod && (() => {
-                const d = currentPeriod.netInvested - prevPeriod.netInvested;
-                const pct = prevPeriod.netInvested !== 0 ? (d / Math.abs(prevPeriod.netInvested)) * 100 : 0;
-                return (
-                  <p className={`text-sm mt-0.5 ${d >= 0 ? "text-green-600" : "text-red-500"}`}>
-                    {fmtPct(pct)} from last statement
-                  </p>
-                );
-              })()}
+              {prevPeriod && (
+                <p className={`text-sm mt-0.5 ${currentPeriod.netInvested >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  {fmtPct((currentPeriod.netInvested / prevPeriod.value) * 100)} from last statement
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
