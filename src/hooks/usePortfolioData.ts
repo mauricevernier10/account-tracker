@@ -30,8 +30,10 @@ export interface PeriodData {
   value: number;
   positions: number;
   avgSize: number;
-  netInvested: number;    // buys - sells this period
-  priceEffect: number;    // pure market price movement (v_curr - v_prev - buys + sells)
+  // Per-period
+  netInvested: number;      // (shares_curr - shares_prev) × price_curr  — share count changes
+  priceEffect: number;      // shares_prev × (price_curr - price_prev)   — pure price movement
+  // Cumulative
   cumInvested: number;
   cumPriceEffect: number;
 }
@@ -51,25 +53,16 @@ export function usePortfolioData(userId: string) {
 
   useEffect(() => {
     async function load() {
-      const [{ data: holdings }, { data: txns }] = await Promise.all([
-        supabase
-          .from("holdings")
-          .select("*")
-          .eq("user_id", userId)
-          .order("statement_date", { ascending: true })
-          .returns<Holding[]>(),
-        supabase
-          .from("transactions")
-          .select("date, isin, direction, amount_eur")
-          .eq("user_id", userId)
-          .in("direction", ["buy", "sell"])
-          .order("date", { ascending: true })
-          .returns<Transaction[]>(),
-      ]);
+      const { data: holdings } = await supabase
+        .from("holdings")
+        .select("*")
+        .eq("user_id", userId)
+        .order("statement_date", { ascending: true })
+        .returns<Holding[]>();
 
       if (!holdings) return;
 
-      // Group holdings by date
+      // Group by date
       const byDate: Record<string, Holding[]> = {};
       for (const h of holdings) {
         if (!byDate[h.statement_date]) byDate[h.statement_date] = [];
@@ -77,32 +70,23 @@ export function usePortfolioData(userId: string) {
       }
       const dates = Object.keys(byDate).sort();
 
-      // Total value per date
-      const totals: Record<string, number> = {};
+      // Build lookup: date → isin → holding
+      const holdingMap: Record<string, Record<string, Holding>> = {};
       for (const d of dates) {
-        totals[d] = byDate[d].reduce((s, h) => s + h.market_value_eur, 0);
+        holdingMap[d] = {};
+        for (const h of byDate[d]) holdingMap[d][h.isin] = h;
       }
 
-      // Holdings lookup: date -> isin -> market_value_eur
-      const valueByDateIsin: Record<string, Record<string, number>> = {};
-      for (const d of dates) {
-        valueByDateIsin[d] = {};
-        for (const h of byDate[d]) {
-          valueByDateIsin[d][h.isin] = h.market_value_eur;
-        }
-      }
-
-      // Build period data — mirrors Streamlit's _render_main_tab logic exactly
       const result: PeriodData[] = [];
       let cumInvested = 0;
       let cumPriceEffect = 0;
 
       for (let i = 0; i < dates.length; i++) {
         const d = dates[i];
-        const value = totals[d];
+        const value = byDate[d].reduce((s, h) => s + h.market_value_eur, 0);
 
         if (i === 0) {
-          // First statement: full value = initial investment, price effect = 0
+          // First statement: entire value is initial investment, price effect = 0
           cumInvested += value;
           result.push({
             date: d,
@@ -119,50 +103,33 @@ export function usePortfolioData(userId: string) {
         }
 
         const dPrev = dates[i - 1];
-        const prevIsinValues = valueByDateIsin[dPrev];
-        const currIsinValues = valueByDateIsin[d];
+        const prev = holdingMap[dPrev];
+        const curr = holdingMap[d];
 
-        // Transactions strictly after prev statement date, up to and including current
-        const periodTxns = (txns ?? []).filter(
-          (tx) => tx.date > dPrev && tx.date <= d
-        );
+        // Union of all ISINs in either statement
+        const allIsins = new Set([...Object.keys(prev), ...Object.keys(curr)]);
 
-        // Aggregate buys and sells per ISIN for this period
-        const buysByIsin: Record<string, number> = {};
-        const sellsByIsin: Record<string, number> = {};
-        for (const tx of periodTxns) {
-          if (tx.direction === "buy") {
-            buysByIsin[tx.isin] = (buysByIsin[tx.isin] ?? 0) + Math.abs(tx.amount_eur);
-          } else {
-            sellsByIsin[tx.isin] = (sellsByIsin[tx.isin] ?? 0) + Math.abs(tx.amount_eur);
-          }
-        }
-
-        // Union of all ISINs present in either statement
-        const allIsins = new Set([
-          ...Object.keys(prevIsinValues),
-          ...Object.keys(currIsinValues),
-        ]);
-
-        let pePeriod = 0;
-        let iePeriod = 0;
+        let periodPriceEffect = 0;
+        let periodNetInvested = 0;
 
         for (const isin of allIsins) {
-          const vCurr = currIsinValues[isin] ?? 0;
-          const vPrev = prevIsinValues[isin] ?? 0;
-          const b = buysByIsin[isin] ?? 0;
-          const s = sellsByIsin[isin] ?? 0;
+          const sharesPrev = prev[isin]?.shares ?? 0;
+          const pricePrev  = prev[isin]?.price_eur ?? 0;
+          const sharesCurr = curr[isin]?.shares ?? 0;
+          // For exited positions, use pricePrev as proxy (no price data after exit)
+          const priceCurr  = curr[isin]?.price_eur ?? pricePrev;
 
-          // Matches Streamlit: pe = v_curr - v_prev - buys + sells
-          pePeriod += vCurr - vPrev - b + s;
-          iePeriod += b - s;
+          // Price effect: same share count, price moved
+          periodPriceEffect += sharesPrev * (priceCurr - pricePrev);
+          // Investment effect: share count changed, valued at current price
+          periodNetInvested += (sharesCurr - sharesPrev) * priceCurr;
         }
 
-        pePeriod = Math.round(pePeriod * 100) / 100;
-        iePeriod = Math.round(iePeriod * 100) / 100;
+        periodPriceEffect = Math.round(periodPriceEffect * 100) / 100;
+        periodNetInvested = Math.round(periodNetInvested * 100) / 100;
 
-        cumInvested += iePeriod;
-        cumPriceEffect += pePeriod;
+        cumInvested    += periodNetInvested;
+        cumPriceEffect += periodPriceEffect;
 
         result.push({
           date: d,
@@ -170,8 +137,8 @@ export function usePortfolioData(userId: string) {
           value,
           positions: byDate[d].length,
           avgSize: value / byDate[d].length,
-          netInvested: iePeriod,
-          priceEffect: pePeriod,
+          netInvested: periodNetInvested,
+          priceEffect: periodPriceEffect,
           cumInvested,
           cumPriceEffect,
         });
