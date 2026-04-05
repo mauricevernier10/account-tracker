@@ -37,10 +37,25 @@ function CustomTooltip({ active, payload }: any) {
   );
 }
 
+function CustomDot(props: any) {
+  const { cx, cy, payload, selectedDate } = props;
+  const isSelected = payload?.date === selectedDate;
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={isSelected ? 5 : 3}
+      fill={isSelected ? "hsl(var(--primary))" : "hsl(var(--background))"}
+      stroke="hsl(var(--primary))"
+      strokeWidth={2}
+    />
+  );
+}
+
 export default function PortfolioValueChart({ data, selectedDate }: Props) {
   const min = Math.min(...data.map((d) => d.value));
   const max = Math.max(...data.map((d) => d.value));
-  const padding = (max - min) * 0.1;
+  const padding = (max - min) * 0.1 || max * 0.1;
 
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -73,20 +88,7 @@ export default function PortfolioValueChart({ data, selectedDate }: Props) {
           dataKey="value"
           stroke="hsl(var(--primary))"
           strokeWidth={2}
-          dot={(props) => {
-            const isSelected = props.payload.date === selectedDate;
-            return (
-              <circle
-                key={props.key}
-                cx={props.cx}
-                cy={props.cy}
-                r={isSelected ? 5 : 3}
-                fill={isSelected ? "hsl(var(--primary))" : "hsl(var(--background))"}
-                stroke="hsl(var(--primary))"
-                strokeWidth={2}
-              />
-            );
-          }}
+          dot={<CustomDot selectedDate={selectedDate} />}
           activeDot={{ r: 5 }}
         />
       </LineChart>
