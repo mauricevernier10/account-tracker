@@ -31,10 +31,10 @@ create table if not exists transactions (
   id         uuid primary key default uuid_generate_v4(),
   user_id    uuid not null references auth.users(id) on delete cascade,
   date       date not null,
-  isin       text not null,
+  isin       text,                 -- null for non-security transactions (dividends, transfers)
   name       text not null,
   direction  direction not null,
-  shares     numeric,              -- null for pre-July-2024 (approx)
+  shares     numeric,
   price_eur  numeric,
   amount_eur numeric not null,
   approx     boolean not null default false,
