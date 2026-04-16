@@ -106,12 +106,22 @@ export function usePortfolioData(userId: string) {
           .reduce((s, tx) => s + Math.abs(tx.amount_eur), 0);
 
         const netInvested = buys - sells;
-        const prevValue   = dPrev
-          ? byDate[dPrev].reduce((s, h) => s + h.market_value_eur, 0)
-          : netInvested; // period 0: priceEffect = value − netInvested
-        const priceEffect = Math.round((value - prevValue - buys + sells) * 100) / 100;
 
-        cumNetInvested += netInvested;
+        let priceEffect: number;
+        if (!dPrev) {
+          // Period 0: if we have pre-statement transaction data, split correctly.
+          // Without it, treat full value as invested so later periods track deltas.
+          priceEffect = (buys > 0 || sells > 0)
+            ? Math.round((value - netInvested) * 100) / 100
+            : 0;
+        } else {
+          const prevValue = byDate[dPrev].reduce((s, h) => s + h.market_value_eur, 0);
+          priceEffect = Math.round((value - prevValue - buys + sells) * 100) / 100;
+        }
+
+        // Period 0 no-data fallback: seed cumNetInvested with full value
+        const effectiveNetInvested = (!dPrev && buys === 0 && sells === 0) ? value : netInvested;
+        cumNetInvested += effectiveNetInvested;
         cumPriceEffect += priceEffect;
 
         result.push({
@@ -121,7 +131,7 @@ export function usePortfolioData(userId: string) {
           positions: byDate[d].length,
           avgSize: value / byDate[d].length,
           priceEffect,
-          netInvested,
+          netInvested: effectiveNetInvested,
           cumNetInvested,
           cumPriceEffect,
         });
