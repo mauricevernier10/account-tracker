@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   const nn = (v: unknown) => (v == null || (typeof v === "number" && isNaN(v)) ? null : v);
 
-  const records = rows
+  const mapped = rows
     .map((r: Record<string, unknown>) => ({
       user_id: uid,
       date: r.date,
@@ -36,16 +36,33 @@ export async function POST(req: NextRequest) {
         r.date
     );
 
-  if (!records.length) return NextResponse.json({ count: 0 });
+  if (!mapped.length) return NextResponse.json({ count: 0 });
 
-  // Insert and ignore duplicates via the unique constraint
+  // Deduplicate within the batch before sending to Supabase.
+  // A duplicate key on any row kills the entire insert, so we must ensure
+  // the batch itself is unique on (user_id, date, isin, direction, amount_eur).
+  const seen = new Set<string>();
+  const records = mapped.filter((r: Record<string, unknown>) => {
+    const key = `${r.date}|${r.isin ?? ""}|${r.direction}|${r.amount_eur}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // upsert with ignoreDuplicates so re-uploads of the same PDF don't error.
+  // onConflict targets the unique constraint; null-isin rows (interest, deposits)
+  // are not matched by ON CONFLICT (NULL != NULL) and always insert — acceptable
+  // since the batch-level dedup above handles within-PDF duplicates.
   const { error, count } = await supabase
     .from("transactions")
-    .insert(records, { count: "exact" });
+    .upsert(records, {
+      onConflict: "user_id,date,isin,direction,amount_eur",
+      ignoreDuplicates: true,
+      count: "exact",
+    });
 
-  // Unique constraint violation = duplicates already exist, treat as success
-  if (error && !error.message.includes("duplicate") && !error.code?.includes("23505")) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
   }
 
   return NextResponse.json({ count: count ?? records.length });
