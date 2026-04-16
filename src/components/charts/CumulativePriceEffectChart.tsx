@@ -14,7 +14,7 @@ import {
 interface DataPoint {
   label: string;
   cumPriceEffect: number;
-  cumInvested: number;
+  cumNetInvested: number;
 }
 
 interface Props {
@@ -29,7 +29,7 @@ function fmtEur(n: number) {
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   const pe = payload.find((p: any) => p.dataKey === "cumPriceEffect");
-  const inv = payload.find((p: any) => p.dataKey === "cumInvested");
+  const inv = payload.find((p: any) => p.dataKey === "cumNetInvested");
   return (
     <div className="rounded-lg border bg-white px-3 py-2 shadow-md text-xs space-y-1">
       <p className="font-semibold text-sm">{label}</p>

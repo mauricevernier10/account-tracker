@@ -17,7 +17,7 @@ interface DataPoint {
   label: string;
   value: number;
   netInvested: number;
-  priceDelta: number;
+  priceEffect: number;
 }
 
 interface Props {
@@ -68,7 +68,7 @@ export default function ValueDecompositionChart({ data }: Props) {
         <Tooltip content={<CustomTooltip />} />
         <ReferenceLine y={0} stroke="#e5e7eb" />
         <Bar dataKey="netInvested" name="Net Invested" stackId="a" fill="#93c5fd" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="priceDelta" name="Price Effect" stackId="a" fill="#2563eb" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="priceEffect" name="Price Effect" stackId="a" fill="#2563eb" radius={[3, 3, 0, 0]} />
         <Line
           type="monotone"
           dataKey="value"

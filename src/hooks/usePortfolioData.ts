@@ -19,7 +19,7 @@ export interface Holding {
 
 export interface Transaction {
   date: string;
-  isin: string;
+  isin: string | null;
   direction: string;
   amount_eur: number;
 }
@@ -30,16 +30,13 @@ export interface PeriodData {
   value: number;
   positions: number;
   avgSize: number;
-  // KPI card values — transaction-based, matches Streamlit exactly
-  // price_delta  = total_value - prev_total - buys + sells
-  // net_invested = buys - sells  (for the period)
-  priceDelta: number;
+  // Per-period flows (transaction-based, matches Streamlit exactly)
+  // priceEffect = value − prevValue − buys + sells
+  // netInvested = buys − sells
+  priceEffect: number;
   netInvested: number;
-  // Chart decomposition — share×price based (for value decomposition / cumulative charts)
-  priceEffect: number;     // shares_prev × (price_curr − price_prev)
-  investEffect: number;    // (shares_curr − shares_prev) × price_curr
-  // Cumulative (chart-based)
-  cumInvested: number;
+  // Cumulative from inception
+  cumNetInvested: number;
   cumPriceEffect: number;
 }
 
@@ -76,7 +73,9 @@ export function usePortfolioData(userId: string) {
 
       if (!holdings) return;
 
-      // Group by date
+      const allTxns = txns ?? [];
+
+      // Group holdings by date
       const byDate: Record<string, Holding[]> = {};
       for (const h of holdings) {
         if (!byDate[h.statement_date]) byDate[h.statement_date] = [];
@@ -84,48 +83,21 @@ export function usePortfolioData(userId: string) {
       }
       const dates = Object.keys(byDate).sort();
 
-      // Build lookup: date → isin → holding
-      const holdingMap: Record<string, Record<string, Holding>> = {};
-      for (const d of dates) {
-        holdingMap[d] = {};
-        for (const h of byDate[d]) holdingMap[d][h.isin] = h;
-      }
-
       const result: PeriodData[] = [];
-      let cumInvested = 0;
+      let cumNetInvested = 0;
       let cumPriceEffect = 0;
 
       for (let i = 0; i < dates.length; i++) {
         const d = dates[i];
         const value = byDate[d].reduce((s, h) => s + h.market_value_eur, 0);
 
-        if (i === 0) {
-          cumInvested += value;
-          result.push({
-            date: d,
-            label: monthLabel(d),
-            value,
-            positions: byDate[d].length,
-            avgSize: value / byDate[d].length,
-            priceDelta: 0,
-            netInvested: value,
-            priceEffect: 0,
-            investEffect: value,
-            cumInvested,
-            cumPriceEffect,
-          });
-          continue;
-        }
-
-        const dPrev = dates[i - 1];
-        const prevValue = byDate[dPrev].reduce((s, h) => s + h.market_value_eur, 0);
-        const prev = holdingMap[dPrev];
-        const curr = holdingMap[d];
-
-        // ── Transaction-based KPI values (matches Streamlit exactly) ──────────
-        const periodTxns = (txns ?? []).filter(
-          (tx) => tx.date > dPrev && tx.date <= d
+        // Transactions for this period: from strictly after previous statement
+        // date up to and including current. Period 0 uses all tx up to dates[0].
+        const dPrev = i > 0 ? dates[i - 1] : null;
+        const periodTxns = allTxns.filter((tx) =>
+          dPrev ? tx.date > dPrev && tx.date <= d : tx.date <= d
         );
+
         const buys  = periodTxns
           .filter((tx) => tx.direction === "buy")
           .reduce((s, tx) => s + Math.abs(tx.amount_eur), 0);
@@ -133,26 +105,14 @@ export function usePortfolioData(userId: string) {
           .filter((tx) => tx.direction === "sell")
           .reduce((s, tx) => s + Math.abs(tx.amount_eur), 0);
 
-        const priceDelta  = Math.round((value - prevValue - buys + sells) * 100) / 100;
-        const netInvested = Math.round((buys - sells) * 100) / 100;
+        const netInvested = buys - sells;
+        const prevValue   = dPrev
+          ? byDate[dPrev].reduce((s, h) => s + h.market_value_eur, 0)
+          : netInvested; // period 0: priceEffect = value − netInvested
+        const priceEffect = Math.round((value - prevValue - buys + sells) * 100) / 100;
 
-        // ── Share×price decomposition for charts ──────────────────────────────
-        const allIsins = new Set([...Object.keys(prev), ...Object.keys(curr)]);
-        let priceEffect = 0;
-        let investEffect = 0;
-        for (const isin of allIsins) {
-          const sharesPrev = prev[isin]?.shares ?? 0;
-          const pricePrev  = prev[isin]?.price_eur ?? 0;
-          const sharesCurr = curr[isin]?.shares ?? 0;
-          const priceCurr  = curr[isin]?.price_eur ?? pricePrev;
-          priceEffect  += sharesPrev * (priceCurr - pricePrev);
-          investEffect += (sharesCurr - sharesPrev) * priceCurr;
-        }
-        priceEffect  = Math.round(priceEffect * 100) / 100;
-        investEffect = Math.round(investEffect * 100) / 100;
-
-        cumInvested    += netInvested;
-        cumPriceEffect += priceDelta;
+        cumNetInvested += netInvested;
+        cumPriceEffect += priceEffect;
 
         result.push({
           date: d,
@@ -160,11 +120,9 @@ export function usePortfolioData(userId: string) {
           value,
           positions: byDate[d].length,
           avgSize: value / byDate[d].length,
-          priceDelta,
-          netInvested,
           priceEffect,
-          investEffect,
-          cumInvested,
+          netInvested,
+          cumNetInvested,
           cumPriceEffect,
         });
       }

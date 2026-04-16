@@ -133,12 +133,12 @@ export default function OverviewTab({ userId }: Props) {
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price Delta</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className={`text-2xl font-semibold ${currentPeriod.priceDelta >= 0 ? "text-green-600" : "text-red-500"}`}>
-                {currentPeriod.priceDelta >= 0 ? "+" : ""}{fmt(currentPeriod.priceDelta)}
+              <p className={`text-2xl font-semibold ${currentPeriod.priceEffect >= 0 ? "text-green-600" : "text-red-500"}`}>
+                {currentPeriod.priceEffect >= 0 ? "+" : ""}{fmt(currentPeriod.priceEffect)}
               </p>
               {prevPeriod && (
-                <p className={`text-sm mt-0.5 ${currentPeriod.priceDelta >= 0 ? "text-green-600" : "text-red-500"}`}>
-                  {fmtPct((currentPeriod.priceDelta / prevPeriod.value) * 100)} from last statement
+                <p className={`text-sm mt-0.5 ${currentPeriod.priceEffect >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  {fmtPct((currentPeriod.priceEffect / prevPeriod.value) * 100)} from last statement
                 </p>
               )}
             </CardContent>
