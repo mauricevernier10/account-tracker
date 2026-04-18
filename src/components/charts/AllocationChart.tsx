@@ -1,6 +1,6 @@
 "use client";
 
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
 interface Slice {
   name: string;
@@ -33,25 +33,6 @@ function CustomTooltip({ active, payload }: any) {
   );
 }
 
-function CustomLegend({ payload }: any) {
-  return (
-    <ul className="flex flex-col gap-1 text-xs mt-2">
-      {payload?.slice(0, 8).map((entry: any) => (
-        <li key={entry.value} className="flex items-center gap-1.5 truncate">
-          <span
-            className="inline-block h-2 w-2 rounded-full shrink-0"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="truncate text-muted-foreground">{entry.value}</span>
-          <span className="ml-auto tabular-nums font-medium shrink-0">
-            {entry.payload.pct?.toFixed(1)}%
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export default function AllocationChart({ data }: Props) {
   const total = data.reduce((s, d) => s + d.value, 0);
   const slices = data.map((d, i) => ({
@@ -61,30 +42,42 @@ export default function AllocationChart({ data }: Props) {
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={260}>
-      <PieChart>
-        <Pie
-          data={slices}
-          cx="40%"
-          cy="50%"
-          innerRadius={65}
-          outerRadius={100}
-          dataKey="value"
-          strokeWidth={2}
-          stroke="hsl(var(--background))"
-        >
-          {slices.map((s, i) => (
-            <Cell key={i} fill={s.color} />
-          ))}
-        </Pie>
-        <Tooltip content={<CustomTooltip />} />
-        <Legend
-          layout="vertical"
-          align="right"
-          verticalAlign="middle"
-          content={<CustomLegend />}
-        />
-      </PieChart>
-    </ResponsiveContainer>
+    <div className="flex items-center gap-4" style={{ height: 260 }}>
+      <div className="flex-1 min-w-0">
+        <ResponsiveContainer width="100%" height={260}>
+          <PieChart>
+            <Pie
+              data={slices}
+              cx="50%"
+              cy="50%"
+              innerRadius={65}
+              outerRadius={100}
+              dataKey="value"
+              strokeWidth={2}
+              stroke="hsl(var(--background))"
+            >
+              {slices.map((s, i) => (
+                <Cell key={i} fill={s.color} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <ul className="flex flex-col gap-1 text-xs shrink-0 max-w-[55%]">
+        {slices.slice(0, 8).map((s) => (
+          <li key={s.name} className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2 w-2 rounded-full shrink-0"
+              style={{ backgroundColor: s.color }}
+            />
+            <span className="truncate text-muted-foreground">{s.name}</span>
+            <span className="ml-auto tabular-nums font-medium shrink-0">
+              {s.pct.toFixed(1)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
