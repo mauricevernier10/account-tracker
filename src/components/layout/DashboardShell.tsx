@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import OverviewTab from "@/components/tabs/OverviewTab";
+import TransactionsTab from "@/components/tabs/TransactionsTab";
 import UploadButton from "@/components/UploadButton";
 
 interface Props {
@@ -60,7 +61,7 @@ export default function DashboardShell({ userId }: Props) {
           </TabsContent>
 
           <TabsContent value="transactions">
-            <p className="text-muted-foreground text-sm">Transactions tab — coming soon.</p>
+            <TransactionsTab userId={userId} />
           </TabsContent>
 
           <TabsContent value="tax">
