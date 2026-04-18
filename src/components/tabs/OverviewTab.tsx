@@ -27,7 +27,7 @@ function fmtPct(n: number) {
 }
 
 export default function OverviewTab({ userId }: Props) {
-  const { periods, holdingsByDate, loading } = usePortfolioData(userId);
+  const { periods, holdingsByDate, fifoByIsin, loading } = usePortfolioData(userId);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const dates = periods.map((p) => p.date);
@@ -258,29 +258,48 @@ export default function OverviewTab({ userId }: Props) {
                   <th className="px-3 py-2 text-right font-medium sm:px-4">Weight</th>
                   <th className="hidden px-3 py-2 text-right font-medium sm:table-cell sm:px-4">Shares</th>
                   <th className="hidden px-3 py-2 text-right font-medium sm:table-cell sm:px-4">Price</th>
+                  <th className="hidden px-3 py-2 text-right font-medium md:table-cell sm:px-4">Avg Cost</th>
+                  <th className="hidden px-3 py-2 text-right font-medium md:table-cell sm:px-4">Unreal. P&amp;L</th>
+                  <th className="hidden px-3 py-2 text-right font-medium md:table-cell sm:px-4">P&amp;L %</th>
                 </tr>
               </thead>
               <tbody>
                 {currentHoldings
                   .sort((a, b) => b.market_value_eur - a.market_value_eur)
-                  .map((h) => (
-                    <tr key={h.isin} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="px-3 py-2 sm:px-4">
-                        <div className="font-medium">{h.name}</div>
-                        <div className="text-xs text-muted-foreground">{h.ticker ?? h.isin}</div>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums sm:px-4">{fmt(h.market_value_eur)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:px-4">
-                        {currentPeriod ? ((h.market_value_eur / currentPeriod.value) * 100).toFixed(1) + "%" : "—"}
-                      </td>
-                      <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell sm:px-4">
-                        {h.shares.toLocaleString("de-DE", { maximumFractionDigits: 4 })}
-                      </td>
-                      <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell sm:px-4">
-                        {fmt(h.price_eur)}
-                      </td>
-                    </tr>
-                  ))}
+                  .map((h) => {
+                    const fifo = fifoByIsin.get(h.isin);
+                    const unrealizedPnL = fifo ? h.market_value_eur - fifo.totalCostRemaining : null;
+                    const unrealizedPct = fifo && fifo.totalCostRemaining > 0
+                      ? (unrealizedPnL! / fifo.totalCostRemaining) * 100
+                      : null;
+                    return (
+                      <tr key={h.isin} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-3 py-2 sm:px-4">
+                          <div className="font-medium">{h.name}</div>
+                          <div className="text-xs text-muted-foreground">{h.ticker ?? h.isin}</div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums sm:px-4">{fmt(h.market_value_eur)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:px-4">
+                          {currentPeriod ? ((h.market_value_eur / currentPeriod.value) * 100).toFixed(1) + "%" : "—"}
+                        </td>
+                        <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell sm:px-4">
+                          {h.shares.toLocaleString("de-DE", { maximumFractionDigits: 4 })}
+                        </td>
+                        <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell sm:px-4">
+                          {fmt(h.price_eur)}
+                        </td>
+                        <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground md:table-cell sm:px-4">
+                          {fifo ? fmt(fifo.avgCostPerShare) : "—"}
+                        </td>
+                        <td className={`hidden whitespace-nowrap px-3 py-2 text-right tabular-nums md:table-cell sm:px-4 ${unrealizedPnL == null ? "text-muted-foreground" : unrealizedPnL >= 0 ? "text-green-600" : "text-red-500"}`}>
+                          {unrealizedPnL == null ? "—" : (unrealizedPnL >= 0 ? "+" : "") + fmt(unrealizedPnL)}
+                        </td>
+                        <td className={`hidden whitespace-nowrap px-3 py-2 text-right tabular-nums md:table-cell sm:px-4 ${unrealizedPct == null ? "text-muted-foreground" : unrealizedPct >= 0 ? "text-green-600" : "text-red-500"}`}>
+                          {unrealizedPct == null ? "—" : (unrealizedPct >= 0 ? "+" : "") + unrealizedPct.toFixed(1) + "%"}
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>

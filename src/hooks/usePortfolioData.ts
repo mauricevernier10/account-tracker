@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { computeFifo, type FifoResult } from "@/lib/fifo";
 
 export interface Holding {
   id: string;
@@ -21,6 +22,7 @@ export interface Transaction {
   date: string;
   isin: string | null;
   direction: string;
+  shares: number | null;
   amount_eur: number;
 }
 
@@ -51,6 +53,7 @@ export function usePortfolioData(userId: string) {
   const supabase = createClient();
   const [periods, setPeriods] = useState<PeriodData[]>([]);
   const [holdingsByDate, setHoldingsByDate] = useState<Record<string, Holding[]>>({});
+  const [fifoByIsin, setFifoByIsin] = useState<Map<string, FifoResult>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,7 +67,7 @@ export function usePortfolioData(userId: string) {
           .returns<Holding[]>(),
         supabase
           .from("transactions")
-          .select("date, isin, direction, amount_eur")
+          .select("date, isin, direction, shares, amount_eur")
           .eq("user_id", userId)
           .in("direction", ["buy", "sell"])
           .order("date", { ascending: true })
@@ -137,13 +140,31 @@ export function usePortfolioData(userId: string) {
         });
       }
 
+      // FIFO: group buy/sell transactions by ISIN and compute cost basis
+      const txsByIsin = new Map<string, { date: string; direction: "buy" | "sell"; qty: number; amount: number }[]>();
+      for (const tx of allTxns) {
+        if (!tx.isin || tx.shares == null || tx.shares <= 0) continue;
+        if (!txsByIsin.has(tx.isin)) txsByIsin.set(tx.isin, []);
+        txsByIsin.get(tx.isin)!.push({
+          date: tx.date,
+          direction: tx.direction as "buy" | "sell",
+          qty: tx.shares,
+          amount: Math.abs(tx.amount_eur),
+        });
+      }
+      const fifo = new Map<string, FifoResult>();
+      for (const [isin, txs] of txsByIsin) {
+        fifo.set(isin, computeFifo(txs));
+      }
+
       setPeriods(result);
       setHoldingsByDate(byDate);
+      setFifoByIsin(fifo);
       setLoading(false);
     }
 
     load();
   }, [userId]);
 
-  return { periods, holdingsByDate, loading };
+  return { periods, holdingsByDate, fifoByIsin, loading };
 }
