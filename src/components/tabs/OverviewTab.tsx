@@ -60,11 +60,13 @@ export default function OverviewTab({ userId }: Props) {
     value: p.value,
   }));
 
-  const allocationData = currentHoldings.map((h) => ({
-    name: h.ticker ?? h.name,
-    value: h.market_value_eur,
-    color: "",
-  }));
+  const allocationData = currentHoldings
+    .map((h) => ({
+      name: h.ticker ?? h.name,
+      value: h.market_value_eur,
+      color: "",
+    }))
+    .sort((a, b) => b.value - a.value);
 
   const positionsData = periods.map((p) => ({ label: p.label, value: p.positions }));
   const avgSizeData = periods.map((p) => ({ label: p.label, value: p.avgSize }));
