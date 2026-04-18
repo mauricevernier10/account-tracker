@@ -64,8 +64,8 @@ export default function AllocationChart({ data }: Props) {
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <ul className="flex flex-col gap-1 text-xs shrink-0 max-w-[55%]">
-        {slices.slice(0, 8).map((s) => (
+      <ul className="flex flex-col gap-1 text-xs shrink-0 max-w-[55%] overflow-y-auto max-h-full">
+        {slices.map((s) => (
           <li key={s.name} className="flex items-center gap-1.5">
             <span
               className="inline-block h-2 w-2 rounded-full shrink-0"
