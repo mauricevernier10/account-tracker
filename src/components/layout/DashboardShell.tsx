@@ -26,7 +26,7 @@ export default function DashboardShell({ userId }: Props) {
       {/* Top nav */}
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <span className="font-semibold tracking-tight">Account Tracker</span>
+          <span className="font-semibold tracking-tight">Trade Republic Account Tracker</span>
           <div className="flex items-center gap-3">
             <UploadButton userId={userId} />
             <Button variant="ghost" size="sm" onClick={signOut}>
