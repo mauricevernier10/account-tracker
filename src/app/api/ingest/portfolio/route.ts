@@ -33,3 +33,52 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ count });
 }
+
+export async function GET() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data, error } = await supabase
+    .from("holdings")
+    .select("statement_date")
+    .eq("user_id", user.id)
+    .returns<{ statement_date: string }[]>();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    counts.set(row.statement_date, (counts.get(row.statement_date) ?? 0) + 1);
+  }
+  const statements = Array.from(counts.entries())
+    .map(([statement_date, positions]) => ({ statement_date, positions }))
+    .sort((a, b) => b.statement_date.localeCompare(a.statement_date));
+
+  return NextResponse.json({ statements });
+}
+
+export async function DELETE(req: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const date = req.nextUrl.searchParams.get("date");
+  if (!date) return NextResponse.json({ error: "Missing date" }, { status: 400 });
+
+  const { error, count } = await supabase
+    .from("holdings")
+    .delete({ count: "exact" })
+    .eq("user_id", user.id)
+    .eq("statement_date", date);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ count: count ?? 0 });
+}

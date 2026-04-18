@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -13,6 +13,17 @@ interface FileStatus {
   name: string;
   status: "pending" | "uploading" | "done" | "error";
   message: string;
+}
+
+interface PortfolioStatement {
+  statement_date: string;
+  positions: number;
+}
+
+interface TransactionsSummary {
+  count: number;
+  minDate: string | null;
+  maxDate: string | null;
 }
 
 async function processFile(file: File, type: UploadType, userId: string): Promise<{ count: number }> {
@@ -36,14 +47,46 @@ async function processFile(file: File, type: UploadType, userId: string): Promis
   return ingestRes.json();
 }
 
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export default function UploadButton({ userId }: Props) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<UploadType>("portfolio");
   const [files, setFiles] = useState<FileStatus[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [statements, setStatements] = useState<PortfolioStatement[]>([]);
+  const [txSummary, setTxSummary] = useState<TransactionsSummary | null>(null);
+  const [loadingData, setLoadingData] = useState(false);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isUploading = files.some((f) => f.status === "uploading" || f.status === "pending");
+
+  const loadStatements = useCallback(async () => {
+    setLoadingData(true);
+    try {
+      const [pRes, tRes] = await Promise.all([
+        fetch("/api/ingest/portfolio"),
+        fetch("/api/ingest/transactions"),
+      ]);
+      if (pRes.ok) {
+        const p = await pRes.json();
+        setStatements(p.statements ?? []);
+      }
+      if (tRes.ok) {
+        const t = await tRes.json();
+        setTxSummary({ count: t.count ?? 0, minDate: t.minDate, maxDate: t.maxDate });
+      }
+    } finally {
+      setLoadingData(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) loadStatements();
+  }, [open, loadStatements]);
 
   async function handleFiles(selected: File[]) {
     const pdfs = selected.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
@@ -71,6 +114,40 @@ export default function UploadButton({ userId }: Props) {
         );
       }
     }
+    loadStatements();
+  }
+
+  async function deletePortfolio(date: string) {
+    if (!confirm(`Delete portfolio statement from ${formatDate(date)}?`)) return;
+    setDeletingKey(`p:${date}`);
+    try {
+      const res = await fetch(`/api/ingest/portfolio?date=${encodeURIComponent(date)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Failed to delete");
+        return;
+      }
+      await loadStatements();
+    } finally {
+      setDeletingKey(null);
+    }
+  }
+
+  async function deleteTransactions() {
+    if (!txSummary?.count) return;
+    if (!confirm(`Delete all ${txSummary.count} transactions? This cannot be undone.`)) return;
+    setDeletingKey("t:all");
+    try {
+      const res = await fetch("/api/ingest/transactions", { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Failed to delete");
+        return;
+      }
+      await loadStatements();
+    } finally {
+      setDeletingKey(null);
+    }
   }
 
   function reset() {
@@ -92,7 +169,7 @@ export default function UploadButton({ userId }: Props) {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-80 rounded-lg border bg-background p-4 shadow-lg">
+        <div className="absolute right-0 top-10 z-50 w-96 rounded-lg border bg-background p-4 shadow-lg">
           <p className="text-sm font-medium mb-3">Upload statements</p>
 
           {/* Type toggle */}
@@ -113,6 +190,62 @@ export default function UploadButton({ userId }: Props) {
             >
               💳 Transactions
             </button>
+          </div>
+
+          {/* Loaded data panel */}
+          <div className="mb-3 rounded-md border bg-muted/30 p-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+              Loaded
+            </p>
+            {loadingData && (
+              <p className="text-xs text-muted-foreground">Loading…</p>
+            )}
+            {!loadingData && type === "portfolio" && (
+              statements.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No portfolio statements yet.</p>
+              ) : (
+                <ul className="space-y-1 max-h-40 overflow-y-auto">
+                  {statements.map((s) => (
+                    <li key={s.statement_date} className="flex items-center gap-2 text-xs">
+                      <span className="flex-1 truncate">{formatDate(s.statement_date)}</span>
+                      <span className="text-muted-foreground">{s.positions} pos</span>
+                      <button
+                        onClick={() => deletePortfolio(s.statement_date)}
+                        disabled={deletingKey === `p:${s.statement_date}`}
+                        className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                        aria-label={`Delete statement ${s.statement_date}`}
+                      >
+                        {deletingKey === `p:${s.statement_date}` ? "…" : "🗑"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+            {!loadingData && type === "transactions" && (
+              !txSummary?.count ? (
+                <p className="text-xs text-muted-foreground">No transactions yet.</p>
+              ) : (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="flex-1">
+                    {txSummary.count} transactions
+                    {txSummary.minDate && txSummary.maxDate && (
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {formatDate(txSummary.minDate)} – {formatDate(txSummary.maxDate)}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    onClick={deleteTransactions}
+                    disabled={deletingKey === "t:all"}
+                    className="rounded px-2 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                  >
+                    {deletingKey === "t:all" ? "Deleting…" : "Delete all"}
+                  </button>
+                </div>
+              )
+            )}
           </div>
 
           {/* Drop zone */}

@@ -67,3 +67,45 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ count: count ?? records.length });
 }
+
+export async function GET() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data, error, count } = await supabase
+    .from("transactions")
+    .select("date", { count: "exact" })
+    .eq("user_id", user.id)
+    .order("date", { ascending: true })
+    .returns<{ date: string }[]>();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const rows = data ?? [];
+  const minDate = rows.length ? rows[0].date : null;
+  const maxDate = rows.length ? rows[rows.length - 1].date : null;
+
+  return NextResponse.json({ count: count ?? rows.length, minDate, maxDate });
+}
+
+export async function DELETE() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { error, count } = await supabase
+    .from("transactions")
+    .delete({ count: "exact" })
+    .eq("user_id", user.id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ count: count ?? 0 });
+}
