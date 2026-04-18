@@ -25,12 +25,16 @@ export default function DashboardShell({ userId }: Props) {
     <div className="flex min-h-screen flex-col">
       {/* Top nav */}
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <span className="font-semibold tracking-tight">Trade Republic Account Tracker</span>
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-3 sm:gap-3">
+          <span className="font-semibold tracking-tight truncate">
+            <span className="hidden sm:inline">Trade Republic Account Tracker</span>
+            <span className="sm:hidden">Account Tracker</span>
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0 sm:gap-3">
             <UploadButton userId={userId} />
-            <Button variant="ghost" size="sm" onClick={signOut}>
-              Sign out
+            <Button variant="ghost" size="sm" onClick={signOut} className="px-2 sm:px-3">
+              <span className="hidden sm:inline">Sign out</span>
+              <span className="sm:hidden">Out</span>
             </Button>
           </div>
         </div>

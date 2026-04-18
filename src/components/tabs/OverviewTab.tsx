@@ -249,39 +249,41 @@ export default function OverviewTab({ userId }: Props) {
           <CardTitle className="text-sm">Holdings — {effectiveDate ? new Date(effectiveDate).toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : ""}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-muted-foreground text-xs">
-                <th className="px-4 py-2 text-left font-medium">Name</th>
-                <th className="px-4 py-2 text-right font-medium">Value</th>
-                <th className="px-4 py-2 text-right font-medium">Weight</th>
-                <th className="px-4 py-2 text-right font-medium">Shares</th>
-                <th className="px-4 py-2 text-right font-medium">Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentHoldings
-                .sort((a, b) => b.market_value_eur - a.market_value_eur)
-                .map((h) => (
-                  <tr key={h.isin} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="px-4 py-2">
-                      <div className="font-medium">{h.name}</div>
-                      <div className="text-xs text-muted-foreground">{h.ticker ?? h.isin}</div>
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">{fmt(h.market_value_eur)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
-                      {currentPeriod ? ((h.market_value_eur / currentPeriod.value) * 100).toFixed(1) + "%" : "—"}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
-                      {h.shares.toLocaleString("de-DE", { maximumFractionDigits: 4 })}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
-                      {fmt(h.price_eur)}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground text-xs">
+                  <th className="px-3 py-2 text-left font-medium sm:px-4">Name</th>
+                  <th className="px-3 py-2 text-right font-medium sm:px-4">Value</th>
+                  <th className="px-3 py-2 text-right font-medium sm:px-4">Weight</th>
+                  <th className="hidden px-3 py-2 text-right font-medium sm:table-cell sm:px-4">Shares</th>
+                  <th className="hidden px-3 py-2 text-right font-medium sm:table-cell sm:px-4">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentHoldings
+                  .sort((a, b) => b.market_value_eur - a.market_value_eur)
+                  .map((h) => (
+                    <tr key={h.isin} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-2 sm:px-4">
+                        <div className="font-medium">{h.name}</div>
+                        <div className="text-xs text-muted-foreground">{h.ticker ?? h.isin}</div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums sm:px-4">{fmt(h.market_value_eur)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:px-4">
+                        {currentPeriod ? ((h.market_value_eur / currentPeriod.value) * 100).toFixed(1) + "%" : "—"}
+                      </td>
+                      <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell sm:px-4">
+                        {h.shares.toLocaleString("de-DE", { maximumFractionDigits: 4 })}
+                      </td>
+                      <td className="hidden whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground sm:table-cell sm:px-4">
+                        {fmt(h.price_eur)}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
     </div>

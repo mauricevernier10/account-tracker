@@ -165,11 +165,12 @@ export default function UploadButton({ userId }: Props) {
   return (
     <div className="relative">
       <Button size="sm" onClick={() => { setOpen((o) => !o); reset(); }}>
-        + New Statement
+        <span className="hidden sm:inline">+ New Statement</span>
+        <span className="sm:hidden">+ New</span>
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-96 rounded-lg border bg-background p-4 shadow-lg">
+        <div className="absolute right-0 top-10 z-50 w-[calc(100vw-2rem)] max-w-sm rounded-lg border bg-background p-4 shadow-lg sm:w-96 sm:max-w-none">
           <p className="text-sm font-medium mb-3">Upload statements</p>
 
           {/* Type toggle */}
