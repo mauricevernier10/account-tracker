@@ -49,9 +49,16 @@ alter table transactions add column if not exists original_amount   numeric;
 alter table transactions add column if not exists original_currency text;
 alter table transactions add column if not exists fx_rate           numeric;
 
-create unique index if not exists ux_tx_user_tx_id
-  on transactions(user_id, transaction_id)
-  where transaction_id is not null;
+-- Unique constraint (not a partial index) so Supabase's onConflict can target
+-- it. Postgres treats NULLs as distinct in unique constraints by default, so
+-- legacy rows with transaction_id = NULL don't collide with each other.
+-- Drop any prior partial index from earlier migrations first.
+drop index if exists ux_tx_user_tx_id;
+
+do $$ begin
+  alter table transactions add constraint ux_tx_user_tx_id unique (user_id, transaction_id);
+exception when duplicate_object then null;
+end $$;
 
 create index if not exists idx_tx_user_date on transactions(user_id, date);
 create index if not exists idx_tx_isin      on transactions(user_id, isin);
