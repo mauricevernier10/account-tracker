@@ -34,10 +34,11 @@ create table if not exists transactions (
   amount_eur numeric not null,
   approx     boolean not null default false,
   tx_type    text,
-  created_at timestamptz not null default now(),
-
-  unique (user_id, date, isin, direction, amount_eur)
+  created_at timestamptz not null default now()
 );
+
+-- Legacy 5-tuple dedup (dropped 2026-04) — transaction_id is the natural key now
+alter table transactions drop constraint if exists transactions_user_id_date_isin_direction_amount_eur_key;
 
 -- CSV-era columns (added 2026-04): transaction_id is the natural dedup key for CSV imports
 alter table transactions add column if not exists transaction_id    text;

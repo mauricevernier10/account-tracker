@@ -55,56 +55,33 @@ export async function POST(req: NextRequest) {
 
   if (!mapped.length) return NextResponse.json({ count: 0 });
 
-  // Split into CSV rows (have transaction_id) and legacy PDF rows (no tx_id)
-  const withTxId = mapped.filter((r) => r.transaction_id);
-  const withoutTxId = mapped.filter((r) => !r.transaction_id && r.amount_eur > 0);
-
-  let total = 0;
-
-  // ── CSV path: dedup by transaction_id ───────────────────────────────────────
-  if (withTxId.length) {
-    // Within-batch dedup on transaction_id
-    const seen = new Set<string>();
-    const records = withTxId.filter((r) => {
-      const key = `${r.transaction_id}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    const { error, count } = await supabase
-      .from("transactions")
-      .upsert(records as never, {
-        onConflict: "user_id,transaction_id",
-        ignoreDuplicates: true,
-        count: "exact",
-      });
-    if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
-    total += count ?? records.length;
+  // All rows must carry transaction_id (provided by CSV imports). Drop rows
+  // without one rather than fall back to a best-effort 5-tuple dedup — that
+  // path is deprecated now that the legacy PDF transaction parser is retired.
+  const records: typeof mapped = [];
+  const seen = new Set<string>();
+  for (const r of mapped) {
+    if (!r.transaction_id) continue;
+    const key = String(r.transaction_id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    records.push(r);
   }
 
-  // ── Legacy PDF path: dedup by (user_id, date, isin, direction, amount_eur) ──
-  if (withoutTxId.length) {
-    const seen = new Set<string>();
-    const records = withoutTxId.filter((r) => {
-      const key = `${r.date}|${r.isin ?? ""}|${r.direction}|${r.amount_eur}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+  if (!records.length) return NextResponse.json({ count: 0 });
+
+  const { error, count } = await supabase
+    .from("transactions")
+    .upsert(records as never, {
+      onConflict: "user_id,transaction_id",
+      ignoreDuplicates: true,
+      count: "exact",
     });
 
-    const { error, count } = await supabase
-      .from("transactions")
-      .upsert(records as never, {
-        onConflict: "user_id,date,isin,direction,amount_eur",
-        ignoreDuplicates: true,
-        count: "exact",
-      });
-    if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
-    total += count ?? records.length;
+  if (error) {
+    return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
   }
-
-  return NextResponse.json({ count: total });
+  return NextResponse.json({ count: count ?? records.length });
 }
 
 export async function GET() {
