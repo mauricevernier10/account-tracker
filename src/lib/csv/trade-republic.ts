@@ -95,6 +95,11 @@ export function parseTradeRepublicCsv(text: string): TradeRepublicRow[] {
     const amountRaw = toNum(cols[iAmount]);
     const symbol = (cols[iSymbol] ?? "").trim() || null;
     const name = (cols[iName] ?? "").trim() || symbol || type;
+    // Preserve signed shares on splits so reverse splits parse correctly;
+    // buy/sell rows are always abs since `direction` carries the sign.
+    const shares = sharesRaw == null
+      ? null
+      : direction === "split" ? sharesRaw : Math.abs(sharesRaw);
 
     rows.push({
       transaction_id: txId,
@@ -102,7 +107,7 @@ export function parseTradeRepublicCsv(text: string): TradeRepublicRow[] {
       direction,
       isin: symbol,
       name,
-      shares: sharesRaw != null ? Math.abs(sharesRaw) : null,
+      shares,
       price_eur: toNum(cols[iPrice]),
       amount_eur: amountRaw != null ? Math.abs(amountRaw) : 0,
       fee_eur: toNum(cols[iFee]),

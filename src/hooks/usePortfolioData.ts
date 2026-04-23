@@ -69,7 +69,7 @@ export function usePortfolioData(userId: string) {
           .from("transactions")
           .select("date, isin, direction, shares, amount_eur")
           .eq("user_id", userId)
-          .in("direction", ["buy", "sell"])
+          .in("direction", ["buy", "sell", "split"])
           .order("date", { ascending: true })
           .returns<Transaction[]>(),
       ]);
@@ -140,15 +140,18 @@ export function usePortfolioData(userId: string) {
         });
       }
 
-      // FIFO: group buy/sell transactions by ISIN and compute cost basis
-      const txsByIsin = new Map<string, { date: string; direction: "buy" | "sell"; qty: number; amount: number }[]>();
+      // FIFO: group buy/sell/split transactions by ISIN and compute cost basis
+      const txsByIsin = new Map<string, { date: string; direction: "buy" | "sell" | "split"; qty: number; amount: number }[]>();
       for (const tx of allTxns) {
-        if (!tx.isin || tx.shares == null || tx.shares <= 0) continue;
+        if (!tx.isin || tx.shares == null || tx.shares === 0) continue;
+        const dir = tx.direction as "buy" | "sell" | "split";
+        if (dir !== "buy" && dir !== "sell" && dir !== "split") continue;
+        const qty = dir === "split" ? tx.shares : Math.abs(tx.shares);
         if (!txsByIsin.has(tx.isin)) txsByIsin.set(tx.isin, []);
         txsByIsin.get(tx.isin)!.push({
           date: tx.date,
-          direction: tx.direction as "buy" | "sell",
-          qty: tx.shares,
+          direction: dir,
+          qty,
           amount: Math.abs(tx.amount_eur),
         });
       }

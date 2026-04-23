@@ -1,8 +1,8 @@
 export interface FifoTx {
   date: string;
-  direction: "buy" | "sell";
-  qty: number;
-  amount: number; // abs EUR total for this lot
+  direction: "buy" | "sell" | "split";
+  qty: number;     // abs for buy/sell; signed delta for split (+ forward, − reverse)
+  amount: number;  // abs EUR total; 0 for splits
 }
 
 interface Lot {
@@ -37,6 +37,22 @@ export function computeFifo(txs: FifoTx[]): FifoResult {
   let realizedPnL = 0;
 
   for (const tx of sorted) {
+    if (tx.direction === "split") {
+      // Scale all existing lots proportionally so share count post-split is
+      // right and cost basis is preserved (per-share cost drops by the factor).
+      // tx.qty is the signed delta: e.g. 20:1 forward split on 0.5 shares → +9.5.
+      const currentTotal = lots.reduce((s, l) => s + l.remainingQty, 0);
+      if (currentTotal <= 0) continue;
+      const newTotal = currentTotal + tx.qty;
+      if (newTotal <= 0) continue;
+      const factor = newTotal / currentTotal;
+      for (const lot of lots) {
+        lot.remainingQty *= factor;
+        lot.originalQty *= factor;
+      }
+      continue;
+    }
+
     if (tx.qty <= 0) continue;
 
     if (tx.direction === "buy") {
