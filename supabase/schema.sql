@@ -28,7 +28,7 @@ create table if not exists transactions (
   date       date not null,
   isin       text,                 -- null for non-security transactions (dividends, transfers)
   name       text not null,
-  direction  text not null,        -- buy | sell | dividend | interest | deposit | withdrawal | etc.
+  direction  text not null,        -- buy | sell | dividend | interest | deposit | withdrawal | split | etc.
   shares     numeric,
   price_eur  numeric,
   amount_eur numeric not null,
@@ -38,6 +38,20 @@ create table if not exists transactions (
 
   unique (user_id, date, isin, direction, amount_eur)
 );
+
+-- CSV-era columns (added 2026-04): transaction_id is the natural dedup key for CSV imports
+alter table transactions add column if not exists transaction_id    text;
+alter table transactions add column if not exists fee_eur           numeric;
+alter table transactions add column if not exists tax_eur           numeric;
+alter table transactions add column if not exists asset_class       text;
+alter table transactions add column if not exists currency          text;
+alter table transactions add column if not exists original_amount   numeric;
+alter table transactions add column if not exists original_currency text;
+alter table transactions add column if not exists fx_rate           numeric;
+
+create unique index if not exists ux_tx_user_tx_id
+  on transactions(user_id, transaction_id)
+  where transaction_id is not null;
 
 create index if not exists idx_tx_user_date on transactions(user_id, date);
 create index if not exists idx_tx_isin      on transactions(user_id, isin);

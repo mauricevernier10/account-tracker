@@ -39,6 +39,14 @@ export interface Database {
           amount_eur: number;
           approx: boolean;
           tx_type: string | null;
+          transaction_id: string | null;
+          fee_eur: number | null;
+          tax_eur: number | null;
+          asset_class: string | null;
+          currency: string | null;
+          original_amount: number | null;
+          original_currency: string | null;
+          fx_rate: number | null;
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["transactions"]["Row"], "id" | "created_at">;

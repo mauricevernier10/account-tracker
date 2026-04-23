@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import type { Database } from "@/types/supabase";
+
+type TxInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -16,56 +19,92 @@ export async function POST(req: NextRequest) {
 
   const nn = (v: unknown) => (v == null || (typeof v === "number" && isNaN(v)) ? null : v);
 
-  const mapped = rows
-    .map((r: Record<string, unknown>) => ({
+  const nnNum = (v: unknown): number | null => {
+    const n = nn(v);
+    if (n == null) return null;
+    const x = Number(n);
+    return Number.isFinite(x) ? x : null;
+  };
+  const nnStr = (v: unknown): string | null => {
+    const n = nn(v);
+    return n == null ? null : String(n);
+  };
+
+  const mapped: TxInsert[] = (rows as Record<string, unknown>[])
+    .map((r) => ({
       user_id: uid,
-      date: r.date,
-      isin: nn(r.isin),
+      date: String(r.date ?? ""),
+      isin: nnStr(r.isin),
       name: String(r.name ?? r.isin ?? r.type ?? "Unknown"),
       direction: String(r.direction ?? ""),
-      shares: nn(r.shares ?? r.quantity),
-      price_eur: nn(r.price_eur ?? r.price),
+      shares: nnNum(r.shares ?? r.quantity),
+      price_eur: nnNum(r.price_eur ?? r.price),
       amount_eur: Math.abs(Number(r.amount_eur ?? r.amount ?? 0)),
       approx: Boolean(r.approx ?? false),
-      tx_type: nn(r.tx_type ?? r.type),
+      tx_type: nnStr(r.tx_type ?? r.type),
+      transaction_id: nnStr(r.transaction_id),
+      fee_eur: nnNum(r.fee_eur),
+      tax_eur: nnNum(r.tax_eur),
+      asset_class: nnStr(r.asset_class),
+      currency: nnStr(r.currency),
+      original_amount: nnNum(r.original_amount),
+      original_currency: nnStr(r.original_currency),
+      fx_rate: nnNum(r.fx_rate),
     }))
-    .filter(
-      (r: Record<string, unknown>) =>
-        r.direction &&
-        Number(r.amount_eur) > 0 &&
-        r.date
-    );
+    .filter((r) => r.direction && r.date);
 
   if (!mapped.length) return NextResponse.json({ count: 0 });
 
-  // Deduplicate within the batch before sending to Supabase.
-  // A duplicate key on any row kills the entire insert, so we must ensure
-  // the batch itself is unique on (user_id, date, isin, direction, amount_eur).
-  const seen = new Set<string>();
-  const records = mapped.filter((r: Record<string, unknown>) => {
-    const key = `${r.date}|${r.isin ?? ""}|${r.direction}|${r.amount_eur}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // Split into CSV rows (have transaction_id) and legacy PDF rows (no tx_id)
+  const withTxId = mapped.filter((r) => r.transaction_id);
+  const withoutTxId = mapped.filter((r) => !r.transaction_id && r.amount_eur > 0);
 
-  // upsert with ignoreDuplicates so re-uploads of the same PDF don't error.
-  // onConflict targets the unique constraint; null-isin rows (interest, deposits)
-  // are not matched by ON CONFLICT (NULL != NULL) and always insert — acceptable
-  // since the batch-level dedup above handles within-PDF duplicates.
-  const { error, count } = await supabase
-    .from("transactions")
-    .upsert(records, {
-      onConflict: "user_id,date,isin,direction,amount_eur",
-      ignoreDuplicates: true,
-      count: "exact",
+  let total = 0;
+
+  // ── CSV path: dedup by transaction_id ───────────────────────────────────────
+  if (withTxId.length) {
+    // Within-batch dedup on transaction_id
+    const seen = new Set<string>();
+    const records = withTxId.filter((r) => {
+      const key = `${r.transaction_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 
-  if (error) {
-    return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
+    const { error, count } = await supabase
+      .from("transactions")
+      .upsert(records as never, {
+        onConflict: "user_id,transaction_id",
+        ignoreDuplicates: true,
+        count: "exact",
+      });
+    if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
+    total += count ?? records.length;
   }
 
-  return NextResponse.json({ count: count ?? records.length });
+  // ── Legacy PDF path: dedup by (user_id, date, isin, direction, amount_eur) ──
+  if (withoutTxId.length) {
+    const seen = new Set<string>();
+    const records = withoutTxId.filter((r) => {
+      const key = `${r.date}|${r.isin ?? ""}|${r.direction}|${r.amount_eur}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const { error, count } = await supabase
+      .from("transactions")
+      .upsert(records as never, {
+        onConflict: "user_id,date,isin,direction,amount_eur",
+        ignoreDuplicates: true,
+        count: "exact",
+      });
+    if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
+    total += count ?? records.length;
+  }
+
+  return NextResponse.json({ count: total });
 }
 
 export async function GET() {

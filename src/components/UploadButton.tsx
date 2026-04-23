@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { parseTradeRepublicCsv } from "@/lib/csv/trade-republic";
 
 interface Props {
   userId: string;
@@ -26,7 +27,24 @@ interface TransactionsSummary {
   maxDate: string | null;
 }
 
-async function processFile(file: File, type: UploadType, userId: string): Promise<{ count: number }> {
+async function processCsv(file: File, userId: string): Promise<{ count: number }> {
+  const text = await file.text();
+  const rows = parseTradeRepublicCsv(text);
+  if (!rows.length) throw new Error("No rows parsed from CSV");
+
+  const ingestRes = await fetch(`/api/ingest/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rows, userId }),
+  });
+  if (!ingestRes.ok) {
+    const err = await ingestRes.json().catch(() => ({}));
+    throw new Error(err.error ?? "Failed to save data");
+  }
+  return ingestRes.json();
+}
+
+async function processPdf(file: File, type: UploadType, userId: string): Promise<{ count: number }> {
   const form = new FormData();
   form.append("file", file);
 
@@ -89,20 +107,23 @@ export default function UploadButton({ userId }: Props) {
   }, [open, loadStatements]);
 
   async function handleFiles(selected: File[]) {
-    const pdfs = selected.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
-    if (!pdfs.length) return;
+    const ext = type === "transactions" ? ".csv" : ".pdf";
+    const accepted = selected.filter((f) => f.name.toLowerCase().endsWith(ext));
+    if (!accepted.length) return;
 
-    const newFiles: FileStatus[] = pdfs.map((f) => ({
+    const newFiles: FileStatus[] = accepted.map((f) => ({
       name: f.name,
       status: "pending",
       message: "",
     }));
     setFiles(newFiles);
 
-    for (let i = 0; i < pdfs.length; i++) {
+    for (let i = 0; i < accepted.length; i++) {
       setFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, status: "uploading" } : f));
       try {
-        const result = await processFile(pdfs[i], type, userId);
+        const result = type === "transactions"
+          ? await processCsv(accepted[i], userId)
+          : await processPdf(accepted[i], type, userId);
         setFiles((prev) =>
           prev.map((f, idx) => idx === i ? { ...f, status: "done", message: `✓ ${result.count} rows` } : f)
         );
@@ -262,7 +283,7 @@ export default function UploadButton({ userId }: Props) {
             }`}
           >
             <p className="text-sm font-medium text-muted-foreground">
-              Drop PDFs here
+              {type === "transactions" ? "Drop CSV here" : "Drop PDFs here"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
           </div>
@@ -270,7 +291,7 @@ export default function UploadButton({ userId }: Props) {
           <input
             ref={inputRef}
             type="file"
-            accept=".pdf"
+            accept={type === "transactions" ? ".csv" : ".pdf"}
             multiple
             className="hidden"
             onChange={(e) => {
