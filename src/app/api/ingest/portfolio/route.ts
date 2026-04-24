@@ -70,13 +70,9 @@ export async function DELETE(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const date = req.nextUrl.searchParams.get("date");
-  if (!date) return NextResponse.json({ error: "Missing date" }, { status: 400 });
 
-  const { error, count } = await supabase
-    .from("holdings")
-    .delete({ count: "exact" })
-    .eq("user_id", user.id)
-    .eq("statement_date", date);
+  const query = supabase.from("holdings").delete({ count: "exact" }).eq("user_id", user.id);
+  const { error, count } = date ? await query.eq("statement_date", date) : await query;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

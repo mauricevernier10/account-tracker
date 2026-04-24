@@ -84,8 +84,6 @@ export default function UploadButton({ userId }: Props) {
   const [priceMsg, setPriceMsg] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const isUploading = files.some((f) => f.status === "uploading" || f.status === "pending");
-
   const loadStatements = useCallback(async () => {
     setLoadingData(true);
     try {
@@ -115,11 +113,7 @@ export default function UploadButton({ userId }: Props) {
     const accepted = selected.filter((f) => f.name.toLowerCase().endsWith(ext));
     if (!accepted.length) return;
 
-    const newFiles: FileStatus[] = accepted.map((f) => ({
-      name: f.name,
-      status: "pending",
-      message: "",
-    }));
+    const newFiles: FileStatus[] = accepted.map((f) => ({ name: f.name, status: "pending", message: "" }));
     setFiles(newFiles);
 
     for (let i = 0; i < accepted.length; i++) {
@@ -147,11 +141,20 @@ export default function UploadButton({ userId }: Props) {
     setDeletingKey(`p:${date}`);
     try {
       const res = await fetch(`/api/ingest/portfolio?date=${encodeURIComponent(date)}`, { method: "DELETE" });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error ?? "Failed to delete");
-        return;
-      }
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? "Failed to delete"); return; }
+      await loadStatements();
+    } finally {
+      setDeletingKey(null);
+    }
+  }
+
+  async function deleteAllPortfolio() {
+    if (!statements.length) return;
+    if (!confirm(`Delete all ${statements.length} portfolio statements? This cannot be undone.`)) return;
+    setDeletingKey("p:all");
+    try {
+      const res = await fetch("/api/ingest/portfolio", { method: "DELETE" });
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? "Failed to delete"); return; }
       await loadStatements();
     } finally {
       setDeletingKey(null);
@@ -164,11 +167,7 @@ export default function UploadButton({ userId }: Props) {
     setDeletingKey("t:all");
     try {
       const res = await fetch("/api/ingest/transactions", { method: "DELETE" });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error ?? "Failed to delete");
-        return;
-      }
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? "Failed to delete"); return; }
       await loadStatements();
     } finally {
       setDeletingKey(null);
@@ -177,16 +176,13 @@ export default function UploadButton({ userId }: Props) {
 
   async function deriveHoldings() {
     if (!txSummary?.count) return;
-    if (statements.length && !confirm("Replace month-end snapshots on any dates covered by your CSV? Prices will use last-known transaction price until the price-fetching phase lands.")) return;
+    if (statements.length && !confirm("Replace month-end snapshots on any dates covered by your CSV? Prices will be approximate until you run Fetch Prices.")) return;
     setDeriving(true);
     setDeriveMsg(null);
     try {
       const res = await fetch("/api/holdings/derive", { method: "POST" });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setDeriveMsg(body.error ?? "Failed to derive");
-        return;
-      }
+      if (!res.ok) { setDeriveMsg(body.error ?? "Failed to derive"); return; }
       setDeriveMsg(`✓ ${body.snapshots} snapshots · ${body.count} positions`);
       await loadStatements();
     } finally {
@@ -201,10 +197,7 @@ export default function UploadButton({ userId }: Props) {
     try {
       const res = await fetch("/api/prices/update", { method: "POST" });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setPriceMsg(body.error ?? "Failed to fetch prices");
-        return;
-      }
+      if (!res.ok) { setPriceMsg(body.error ?? "Failed to fetch prices"); return; }
       const failNote = body.failed?.length ? ` · ${body.failed.length} unresolved` : "";
       setPriceMsg(`✓ ${body.updated} rows updated${failNote}`);
     } finally {
@@ -220,9 +213,10 @@ export default function UploadButton({ userId }: Props) {
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    const dropped = Array.from(e.dataTransfer.files);
-    handleFiles(dropped);
-  }, [type, userId]);
+    handleFiles(Array.from(e.dataTransfer.files));
+  }, [type, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const busy = deriving || fetchingPrices || !!deletingKey;
 
   return (
     <div className="relative">
@@ -233,110 +227,132 @@ export default function UploadButton({ userId }: Props) {
 
       {open && (
         <div className="absolute right-0 top-10 z-50 w-[calc(100vw-2rem)] max-w-sm rounded-lg border bg-background p-4 shadow-lg sm:w-96 sm:max-w-none">
-          <p className="text-sm font-medium mb-3">Upload statements</p>
+          <p className="text-sm font-medium mb-3">Manage data</p>
 
-          {/* Type toggle */}
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => { setType("portfolio"); reset(); }}
-              className={`flex-1 rounded-md border py-1.5 text-xs font-medium transition-colors ${
-                type === "portfolio" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
-              }`}
-            >
-              📊 Portfolio
-            </button>
-            <button
-              onClick={() => { setType("transactions"); reset(); }}
-              className={`flex-1 rounded-md border py-1.5 text-xs font-medium transition-colors ${
-                type === "transactions" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
-              }`}
-            >
-              💳 Transactions
-            </button>
-          </div>
+          {/* Unified loaded-data panel */}
+          <div className="mb-3 rounded-md border bg-muted/30 p-2 space-y-3">
+            {loadingData && <p className="text-xs text-muted-foreground">Loading…</p>}
 
-          {/* Loaded data panel */}
-          <div className="mb-3 rounded-md border bg-muted/30 p-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
-              Loaded
-            </p>
-            {loadingData && (
-              <p className="text-xs text-muted-foreground">Loading…</p>
-            )}
-            {!loadingData && type === "portfolio" && (
+            {!loadingData && (
               <>
-                {statements.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No portfolio statements yet.</p>
-                ) : (
-                  <ul className="space-y-1 max-h-40 overflow-y-auto">
-                    {statements.map((s) => (
-                      <li key={s.statement_date} className="flex items-center gap-2 text-xs">
-                        <span className="flex-1 truncate">{formatDate(s.statement_date)}</span>
-                        <span className="text-muted-foreground">{s.positions} pos</span>
-                        <button
-                          onClick={() => deletePortfolio(s.statement_date)}
-                          disabled={deletingKey === `p:${s.statement_date}`}
-                          className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                          aria-label={`Delete statement ${s.statement_date}`}
-                        >
-                          {deletingKey === `p:${s.statement_date}` ? "…" : "🗑"}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-2 flex flex-col gap-1.5 border-t pt-2">
-                  {!!txSummary?.count && (
-                    <div className="flex items-center gap-2">
+                {/* Portfolio statements */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Portfolio statements
+                    </p>
+                    {statements.length > 1 && (
                       <button
-                        onClick={deriveHoldings}
-                        disabled={deriving || fetchingPrices}
-                        className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                        onClick={deleteAllPortfolio}
+                        disabled={busy}
+                        className="text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors"
                       >
-                        {deriving ? "Deriving…" : "Derive from CSV"}
+                        {deletingKey === "p:all" ? "Deleting…" : "Delete all"}
                       </button>
-                      {deriveMsg && <span className="text-xs text-muted-foreground truncate">{deriveMsg}</span>}
-                    </div>
+                    )}
+                  </div>
+                  {statements.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No statements yet.</p>
+                  ) : (
+                    <ul className="space-y-1 max-h-32 overflow-y-auto">
+                      {statements.map((s) => (
+                        <li key={s.statement_date} className="flex items-center gap-2 text-xs">
+                          <span className="flex-1 truncate">{formatDate(s.statement_date)}</span>
+                          <span className="text-muted-foreground">{s.positions} pos</span>
+                          <button
+                            onClick={() => deletePortfolio(s.statement_date)}
+                            disabled={busy}
+                            className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                            aria-label={`Delete statement ${s.statement_date}`}
+                          >
+                            {deletingKey === `p:${s.statement_date}` ? "…" : "🗑"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                  {!!statements.length && (
-                    <div className="flex items-center gap-2">
+                </div>
+
+                {/* Transactions summary */}
+                <div className="border-t pt-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                    Transactions
+                  </p>
+                  {!txSummary?.count ? (
+                    <p className="text-xs text-muted-foreground">No transactions yet.</p>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="flex-1 text-muted-foreground">
+                        {txSummary.count} rows
+                        {txSummary.minDate && txSummary.maxDate && (
+                          <> · {formatDate(txSummary.minDate)} – {formatDate(txSummary.maxDate)}</>
+                        )}
+                      </span>
                       <button
-                        onClick={fetchPrices}
-                        disabled={fetchingPrices || deriving}
-                        className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                        onClick={deleteTransactions}
+                        disabled={busy}
+                        className="text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors"
                       >
-                        {fetchingPrices ? "Fetching…" : "Fetch Prices"}
+                        {deletingKey === "t:all" ? "Deleting…" : "Delete all"}
                       </button>
-                      {priceMsg && <span className="text-xs text-muted-foreground truncate">{priceMsg}</span>}
                     </div>
                   )}
                 </div>
+
+                {/* Actions */}
+                {(!!txSummary?.count || !!statements.length) && (
+                  <div className="border-t pt-2 flex flex-col gap-1.5">
+                    {!!txSummary?.count && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={deriveHoldings}
+                          disabled={busy}
+                          className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                        >
+                          {deriving ? "Deriving…" : "Derive from CSV"}
+                        </button>
+                        {deriveMsg && <span className="text-xs text-muted-foreground truncate">{deriveMsg}</span>}
+                      </div>
+                    )}
+                    {!!statements.length && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={fetchPrices}
+                          disabled={busy}
+                          className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                        >
+                          {fetchingPrices ? "Fetching…" : "Fetch Prices"}
+                        </button>
+                        {priceMsg && <span className="text-xs text-muted-foreground truncate">{priceMsg}</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
-            {!loadingData && type === "transactions" && (
-              !txSummary?.count ? (
-                <p className="text-xs text-muted-foreground">No transactions yet.</p>
-              ) : (
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="flex-1">
-                    {txSummary.count} transactions
-                    {txSummary.minDate && txSummary.maxDate && (
-                      <span className="text-muted-foreground">
-                        {" · "}
-                        {formatDate(txSummary.minDate)} – {formatDate(txSummary.maxDate)}
-                      </span>
-                    )}
-                  </span>
-                  <button
-                    onClick={deleteTransactions}
-                    disabled={deletingKey === "t:all"}
-                    className="rounded px-2 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                  >
-                    {deletingKey === "t:all" ? "Deleting…" : "Delete all"}
-                  </button>
-                </div>
-              )
-            )}
+          </div>
+
+          {/* Upload type selector */}
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-muted-foreground shrink-0">Upload:</span>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => { setType("portfolio"); reset(); }}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors border ${
+                  type === "portfolio" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted border-transparent"
+                }`}
+              >
+                PDF
+              </button>
+              <button
+                onClick={() => { setType("transactions"); reset(); }}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors border ${
+                  type === "transactions" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted border-transparent"
+                }`}
+              >
+                CSV
+              </button>
+            </div>
           </div>
 
           {/* Drop zone */}
@@ -345,7 +361,7 @@ export default function UploadButton({ userId }: Props) {
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
             onClick={() => { reset(); inputRef.current?.click(); }}
-            className={`cursor-pointer rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors ${
+            className={`cursor-pointer rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
               dragging
                 ? "border-primary bg-primary/5"
                 : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
@@ -368,9 +384,9 @@ export default function UploadButton({ userId }: Props) {
             }}
           />
 
-          {/* Per-file status list */}
+          {/* Per-file status */}
           {files.length > 0 && (
-            <ul className="mt-3 space-y-1.5 max-h-48 overflow-y-auto">
+            <ul className="mt-3 space-y-1.5 max-h-40 overflow-y-auto">
               {files.map((f, i) => (
                 <li key={i} className="flex items-center gap-2 text-xs">
                   <span className="shrink-0">
