@@ -9,53 +9,70 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  Legend,
 } from "recharts";
 
 interface DataPoint {
   date: string;
   label: string;
   value: number;
+  benchmark?: number;
 }
 
 interface Props {
   data: DataPoint[];
   selectedDate: string;
+  benchmarkLabel?: string;
 }
 
 function fmtEur(n: number) {
   return "€" + new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(n);
 }
 
-function CustomTooltip({ active, payload }: any) {
+function CustomTooltip({ active, payload, benchmarkLabel }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
+  const portfolioEntry = payload.find((p: any) => p.dataKey === "value");
+  const benchmarkEntry = payload.find((p: any) => p.dataKey === "benchmark");
+  const diff =
+    portfolioEntry?.value != null && benchmarkEntry?.value != null
+      ? portfolioEntry.value - benchmarkEntry.value
+      : null;
+
   return (
-    <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-sm">
-      <p className="font-medium">{d.label}</p>
-      <p className="text-primary font-semibold">{fmtEur(d.value)}</p>
+    <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-sm space-y-0.5">
+      <p className="font-medium mb-1">{d.label}</p>
+      <p style={{ color: "#2563eb" }}>Portfolio: {fmtEur(d.value)}</p>
+      {benchmarkEntry?.value != null && (
+        <>
+          <p style={{ color: "#9ca3af" }}>
+            {benchmarkLabel ?? "Benchmark"}: {fmtEur(benchmarkEntry.value)}
+          </p>
+          {diff != null && (
+            <p className={`text-xs font-medium pt-0.5 ${diff >= 0 ? "text-green-600" : "text-red-500"}`}>
+              {diff >= 0 ? "+" : ""}{fmtEur(diff)} vs benchmark
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
 function CustomDot(props: any) {
   const { cx, cy, payload, selectedDate } = props;
-  const isSelected = payload?.date === selectedDate;
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={isSelected ? 5 : 3}
-      fill={isSelected ? "#2563eb" : "#ffffff"}
-      stroke="#2563eb"
-      strokeWidth={2}
-    />
-  );
+  if (payload?.date !== selectedDate) return null;
+  return <circle cx={cx} cy={cy} r={5} fill="#2563eb" stroke="#2563eb" strokeWidth={2} />;
 }
 
-export default function PortfolioValueChart({ data, selectedDate }: Props) {
-  const min = Math.min(...data.map((d) => d.value));
-  const max = Math.max(...data.map((d) => d.value));
+export default function PortfolioValueChart({ data, selectedDate, benchmarkLabel }: Props) {
+  const allValues = data.flatMap((d) =>
+    [d.value, d.benchmark].filter((v): v is number => v != null)
+  );
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues);
   const padding = (max - min) * 0.1 || max * 0.1;
+  const hasBenchmark = data.some((d) => d.benchmark != null);
 
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -76,12 +93,18 @@ export default function PortfolioValueChart({ data, selectedDate }: Props) {
           width={52}
           domain={[min - padding, max + padding]}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={<CustomTooltip benchmarkLabel={benchmarkLabel} />} />
+        {hasBenchmark && (
+          <Legend
+            wrapperStyle={{ fontSize: 11, paddingTop: 4 }}
+            formatter={(value) => (value === "value" ? "Portfolio" : (benchmarkLabel ?? "Benchmark"))}
+          />
+        )}
         <ReferenceLine
           x={data.find((d) => d.date === selectedDate)?.label}
           stroke="#2563eb"
           strokeDasharray="4 2"
-          strokeOpacity={0.5}
+          strokeOpacity={0.4}
         />
         <Line
           type="monotone"
@@ -91,6 +114,17 @@ export default function PortfolioValueChart({ data, selectedDate }: Props) {
           dot={<CustomDot selectedDate={selectedDate} />}
           activeDot={{ r: 5, fill: "#2563eb" }}
         />
+        {hasBenchmark && (
+          <Line
+            type="monotone"
+            dataKey="benchmark"
+            stroke="#9ca3af"
+            strokeWidth={2}
+            strokeDasharray="5 3"
+            dot={false}
+            activeDot={{ r: 4, fill: "#9ca3af" }}
+          />
+        )}
       </LineChart>
     </ResponsiveContainer>
   );

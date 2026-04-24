@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePortfolioData } from "@/hooks/usePortfolioData";
 import PortfolioValueChart from "@/components/charts/PortfolioValueChart";
@@ -8,6 +8,7 @@ import AllocationChart from "@/components/charts/AllocationChart";
 import ValueDecompositionChart from "@/components/charts/ValueDecompositionChart";
 import CumulativePriceEffectChart from "@/components/charts/CumulativePriceEffectChart";
 import MetricLineChart from "@/components/charts/MetricLineChart";
+import { BENCHMARKS, computeCashflowBenchmark, type BenchmarkTicker } from "@/lib/benchmark";
 
 interface Props {
   userId: string;
@@ -30,6 +31,30 @@ function fmtPct(n: number) {
 export default function OverviewTab({ userId, refreshKey }: Props) {
   const { periods, holdingsByDate, fifoByIsin, loading } = usePortfolioData(userId, refreshKey);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [benchmarkTicker, setBenchmarkTicker] = useState<BenchmarkTicker | "">("");
+  const [benchmarkPrices, setBenchmarkPrices] = useState<{ date: string; close: number }[]>([]);
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
+
+  useEffect(() => {
+    if (!benchmarkTicker || !periods.length) { setBenchmarkPrices([]); return; }
+    const from = periods[0].date;
+    const to = periods[periods.length - 1].date;
+    setBenchmarkLoading(true);
+    fetch(`/api/benchmark?ticker=${benchmarkTicker}&from=${from}&to=${to}`)
+      .then((r) => r.json())
+      .then((d) => setBenchmarkPrices(d.prices ?? []))
+      .catch(() => setBenchmarkPrices([]))
+      .finally(() => setBenchmarkLoading(false));
+  }, [benchmarkTicker, periods.length, periods[0]?.date]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const benchmarkValues = useMemo(
+    () => computeCashflowBenchmark(periods, benchmarkPrices),
+    [periods, benchmarkPrices],
+  );
+  const benchmarkByDate = useMemo(
+    () => new Map(benchmarkValues.map((b) => [b.date, b.value])),
+    [benchmarkValues],
+  );
 
   const dates = periods.map((p) => p.date);
   const effectiveDate = selectedDate ?? dates[dates.length - 1] ?? null;
@@ -59,7 +84,10 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
     date: p.date,
     label: p.label,
     value: p.value,
+    benchmark: benchmarkByDate.get(p.date),
   }));
+
+  const activeBenchmarkLabel = BENCHMARKS.find((b) => b.ticker === benchmarkTicker)?.label;
 
   const allocationData = currentHoldings
     .map((h) => ({
@@ -170,11 +198,32 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Portfolio Value</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-medium">Portfolio Value</CardTitle>
+              <div className="flex items-center gap-1.5">
+                {benchmarkLoading && (
+                  <span className="text-xs text-muted-foreground">Loading…</span>
+                )}
+                <select
+                  value={benchmarkTicker}
+                  onChange={(e) => setBenchmarkTicker(e.target.value as BenchmarkTicker | "")}
+                  className="rounded border px-2 py-0.5 text-xs bg-background text-muted-foreground"
+                >
+                  <option value="">No benchmark</option>
+                  {BENCHMARKS.map((b) => (
+                    <option key={b.ticker} value={b.ticker}>{b.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="pt-0">
             {chartData.length > 1 && effectiveDate ? (
-              <PortfolioValueChart data={chartData} selectedDate={effectiveDate} />
+              <PortfolioValueChart
+                data={chartData}
+                selectedDate={effectiveDate}
+                benchmarkLabel={activeBenchmarkLabel}
+              />
             ) : (
               <p className="text-xs text-muted-foreground py-8 text-center">
                 Upload more statements to see the chart
