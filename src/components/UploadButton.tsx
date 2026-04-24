@@ -80,6 +80,8 @@ export default function UploadButton({ userId }: Props) {
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [deriving, setDeriving] = useState(false);
   const [deriveMsg, setDeriveMsg] = useState<string | null>(null);
+  const [fetchingPrices, setFetchingPrices] = useState(false);
+  const [priceMsg, setPriceMsg] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isUploading = files.some((f) => f.status === "uploading" || f.status === "pending");
@@ -192,6 +194,24 @@ export default function UploadButton({ userId }: Props) {
     }
   }
 
+  async function fetchPrices() {
+    if (!statements.length) return;
+    setFetchingPrices(true);
+    setPriceMsg(null);
+    try {
+      const res = await fetch("/api/prices/update", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPriceMsg(body.error ?? "Failed to fetch prices");
+        return;
+      }
+      const failNote = body.failed?.length ? ` · ${body.failed.length} unresolved` : "";
+      setPriceMsg(`✓ ${body.updated} rows updated${failNote}`);
+    } finally {
+      setFetchingPrices(false);
+    }
+  }
+
   function reset() {
     setFiles([]);
     if (inputRef.current) inputRef.current.value = "";
@@ -265,18 +285,32 @@ export default function UploadButton({ userId }: Props) {
                     ))}
                   </ul>
                 )}
-                {!!txSummary?.count && (
-                  <div className="mt-2 flex items-center gap-2 border-t pt-2">
-                    <button
-                      onClick={deriveHoldings}
-                      disabled={deriving}
-                      className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
-                    >
-                      {deriving ? "Deriving…" : "Derive from CSV"}
-                    </button>
-                    {deriveMsg && <span className="text-xs text-muted-foreground truncate">{deriveMsg}</span>}
-                  </div>
-                )}
+                <div className="mt-2 flex flex-col gap-1.5 border-t pt-2">
+                  {!!txSummary?.count && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={deriveHoldings}
+                        disabled={deriving || fetchingPrices}
+                        className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                      >
+                        {deriving ? "Deriving…" : "Derive from CSV"}
+                      </button>
+                      {deriveMsg && <span className="text-xs text-muted-foreground truncate">{deriveMsg}</span>}
+                    </div>
+                  )}
+                  {!!statements.length && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={fetchPrices}
+                        disabled={fetchingPrices || deriving}
+                        className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                      >
+                        {fetchingPrices ? "Fetching…" : "Fetch Prices"}
+                      </button>
+                      {priceMsg && <span className="text-xs text-muted-foreground truncate">{priceMsg}</span>}
+                    </div>
+                  )}
+                </div>
               </>
             )}
             {!loadingData && type === "transactions" && (
