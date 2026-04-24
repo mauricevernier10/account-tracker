@@ -78,6 +78,8 @@ export default function UploadButton({ userId }: Props) {
   const [txSummary, setTxSummary] = useState<TransactionsSummary | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [deriving, setDeriving] = useState(false);
+  const [deriveMsg, setDeriveMsg] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isUploading = files.some((f) => f.status === "uploading" || f.status === "pending");
@@ -171,6 +173,25 @@ export default function UploadButton({ userId }: Props) {
     }
   }
 
+  async function deriveHoldings() {
+    if (!txSummary?.count) return;
+    if (statements.length && !confirm("Replace month-end snapshots on any dates covered by your CSV? Prices will use last-known transaction price until the price-fetching phase lands.")) return;
+    setDeriving(true);
+    setDeriveMsg(null);
+    try {
+      const res = await fetch("/api/holdings/derive", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDeriveMsg(body.error ?? "Failed to derive");
+        return;
+      }
+      setDeriveMsg(`✓ ${body.snapshots} snapshots · ${body.count} positions`);
+      await loadStatements();
+    } finally {
+      setDeriving(false);
+    }
+  }
+
   function reset() {
     setFiles([]);
     if (inputRef.current) inputRef.current.value = "";
@@ -223,26 +244,40 @@ export default function UploadButton({ userId }: Props) {
               <p className="text-xs text-muted-foreground">Loading…</p>
             )}
             {!loadingData && type === "portfolio" && (
-              statements.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No portfolio statements yet.</p>
-              ) : (
-                <ul className="space-y-1 max-h-40 overflow-y-auto">
-                  {statements.map((s) => (
-                    <li key={s.statement_date} className="flex items-center gap-2 text-xs">
-                      <span className="flex-1 truncate">{formatDate(s.statement_date)}</span>
-                      <span className="text-muted-foreground">{s.positions} pos</span>
-                      <button
-                        onClick={() => deletePortfolio(s.statement_date)}
-                        disabled={deletingKey === `p:${s.statement_date}`}
-                        className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                        aria-label={`Delete statement ${s.statement_date}`}
-                      >
-                        {deletingKey === `p:${s.statement_date}` ? "…" : "🗑"}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )
+              <>
+                {statements.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No portfolio statements yet.</p>
+                ) : (
+                  <ul className="space-y-1 max-h-40 overflow-y-auto">
+                    {statements.map((s) => (
+                      <li key={s.statement_date} className="flex items-center gap-2 text-xs">
+                        <span className="flex-1 truncate">{formatDate(s.statement_date)}</span>
+                        <span className="text-muted-foreground">{s.positions} pos</span>
+                        <button
+                          onClick={() => deletePortfolio(s.statement_date)}
+                          disabled={deletingKey === `p:${s.statement_date}`}
+                          className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                          aria-label={`Delete statement ${s.statement_date}`}
+                        >
+                          {deletingKey === `p:${s.statement_date}` ? "…" : "🗑"}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!!txSummary?.count && (
+                  <div className="mt-2 flex items-center gap-2 border-t pt-2">
+                    <button
+                      onClick={deriveHoldings}
+                      disabled={deriving}
+                      className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {deriving ? "Deriving…" : "Derive from CSV"}
+                    </button>
+                    {deriveMsg && <span className="text-xs text-muted-foreground truncate">{deriveMsg}</span>}
+                  </div>
+                )}
+              </>
             )}
             {!loadingData && type === "transactions" && (
               !txSummary?.count ? (
