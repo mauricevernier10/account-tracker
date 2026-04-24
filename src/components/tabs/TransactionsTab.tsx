@@ -6,6 +6,7 @@ import { useTransactions, type TxRow } from "@/hooks/useTransactions";
 
 interface Props {
   userId: string;
+  refreshKey?: number;
 }
 
 const DIRECTION_LABELS: Record<string, string> = {
@@ -63,8 +64,8 @@ function exportCsv(rows: TxRow[]) {
   URL.revokeObjectURL(url);
 }
 
-export default function TransactionsTab({ userId }: Props) {
-  const { transactions, loading } = useTransactions(userId);
+export default function TransactionsTab({ userId, refreshKey }: Props) {
+  const { transactions, loading } = useTransactions(userId, refreshKey);
   const [search, setSearch] = useState("");
   const [dirFilter, setDirFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");

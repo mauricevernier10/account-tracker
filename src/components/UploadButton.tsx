@@ -6,17 +6,13 @@ import { parseTradeRepublicCsv } from "@/lib/csv/trade-republic";
 
 interface Props {
   userId: string;
+  onDataChanged?: () => void;
 }
 
 interface FileStatus {
   name: string;
   status: "pending" | "uploading" | "done" | "error";
   message: string;
-}
-
-interface PortfolioStatement {
-  statement_date: string;
-  positions: number;
 }
 
 interface TransactionsSummary {
@@ -46,30 +42,22 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export default function UploadButton({ userId }: Props) {
+export default function UploadButton({ userId, onDataChanged }: Props) {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<FileStatus[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [statements, setStatements] = useState<PortfolioStatement[]>([]);
   const [txSummary, setTxSummary] = useState<TransactionsSummary | null>(null);
   const [loadingData, setLoadingData] = useState(false);
-  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [pipelineStage, setPipelineStage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const loadStatements = useCallback(async () => {
+  const loadSummary = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [pRes, tRes] = await Promise.all([
-        fetch("/api/ingest/portfolio"),
-        fetch("/api/ingest/transactions"),
-      ]);
-      if (pRes.ok) {
-        const p = await pRes.json();
-        setStatements(p.statements ?? []);
-      }
-      if (tRes.ok) {
-        const t = await tRes.json();
+      const res = await fetch("/api/ingest/transactions");
+      if (res.ok) {
+        const t = await res.json();
         setTxSummary({ count: t.count ?? 0, minDate: t.minDate, maxDate: t.maxDate });
       }
     } finally {
@@ -78,8 +66,8 @@ export default function UploadButton({ userId }: Props) {
   }, []);
 
   useEffect(() => {
-    if (open) loadStatements();
-  }, [open, loadStatements]);
+    if (open) loadSummary();
+  }, [open, loadSummary]);
 
   async function handleFiles(selected: File[]) {
     const accepted = selected.filter((f) => f.name.toLowerCase().endsWith(".csv"));
@@ -104,52 +92,39 @@ export default function UploadButton({ userId }: Props) {
       }
     }
 
-    // Auto-pipeline: derive snapshots → fetch prices
-    const anySucceeded = accepted.length > 0;
-    if (anySucceeded) {
-      try {
-        setPipelineStage("Deriving snapshots…");
-        const dRes = await fetch("/api/holdings/derive", { method: "POST" });
-        if (!dRes.ok) throw new Error("Derive failed");
-
-        setPipelineStage("Fetching prices…");
-        const pRes = await fetch("/api/prices/update", { method: "POST" });
-        const pBody = await pRes.json().catch(() => ({}));
-        if (!pRes.ok) throw new Error(pBody.error ?? "Price fetch failed");
-
-        const failNote = pBody.failed?.length ? ` · ${pBody.failed.length} unresolved` : "";
-        setPipelineStage(`✓ ${pBody.updated} rows priced${failNote}`);
-      } catch (err) {
-        setPipelineStage(`⚠ ${err instanceof Error ? err.message : "Pipeline failed"}`);
-      }
-    }
-
-    loadStatements();
-  }
-
-  async function deleteAllPortfolio() {
-    if (!statements.length) return;
-    if (!confirm(`Delete all ${statements.length} portfolio statements? This cannot be undone.`)) return;
-    setDeletingKey("p:all");
     try {
-      const res = await fetch("/api/ingest/portfolio", { method: "DELETE" });
-      if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? "Failed to delete"); return; }
-      await loadStatements();
-    } finally {
-      setDeletingKey(null);
+      setPipelineStage("Deriving snapshots…");
+      const dRes = await fetch("/api/holdings/derive", { method: "POST" });
+      if (!dRes.ok) throw new Error("Derive failed");
+
+      setPipelineStage("Fetching prices…");
+      const pRes = await fetch("/api/prices/update", { method: "POST" });
+      const pBody = await pRes.json().catch(() => ({}));
+      if (!pRes.ok) throw new Error(pBody.error ?? "Price fetch failed");
+
+      const failNote = pBody.failed?.length ? ` · ${pBody.failed.length} unresolved` : "";
+      setPipelineStage(`✓ ${pBody.updated} rows priced${failNote}`);
+      onDataChanged?.();
+    } catch (err) {
+      setPipelineStage(`⚠ ${err instanceof Error ? err.message : "Pipeline failed"}`);
     }
+
+    loadSummary();
   }
 
-  async function deleteTransactions() {
+  async function deleteAll() {
     if (!txSummary?.count) return;
-    if (!confirm(`Delete all ${txSummary.count} transactions? This cannot be undone.`)) return;
-    setDeletingKey("t:all");
+    if (!confirm(`Delete all ${txSummary.count} transactions and all portfolio snapshots? This cannot be undone.`)) return;
+    setDeleting(true);
     try {
-      const res = await fetch("/api/ingest/transactions", { method: "DELETE" });
-      if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? "Failed to delete"); return; }
-      await loadStatements();
+      await Promise.all([
+        fetch("/api/ingest/transactions", { method: "DELETE" }),
+        fetch("/api/ingest/portfolio", { method: "DELETE" }),
+      ]);
+      await loadSummary();
+      onDataChanged?.();
     } finally {
-      setDeletingKey(null);
+      setDeleting(false);
     }
   }
 
@@ -176,62 +151,26 @@ export default function UploadButton({ userId }: Props) {
         <div className="absolute right-0 top-10 z-50 w-[calc(100vw-2rem)] max-w-sm rounded-lg border bg-background p-4 shadow-lg sm:w-96 sm:max-w-none">
           <p className="text-sm font-medium mb-3">Manage data</p>
 
-          <div className="mb-3 rounded-md border bg-muted/30 p-2 space-y-3">
-            {loadingData && <p className="text-xs text-muted-foreground">Loading…</p>}
-
-            {!loadingData && (
-              <>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Portfolio snapshots
-                    </p>
-                    {!!statements.length && (
-                      <button
-                        onClick={deleteAllPortfolio}
-                        disabled={!!deletingKey}
-                        className="text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors"
-                      >
-                        {deletingKey === "p:all" ? "Deleting…" : "Delete all"}
-                      </button>
-                    )}
-                  </div>
-                  {statements.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No snapshots yet.</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      {statements.length} month-end snapshots · {formatDate(statements[statements.length - 1].statement_date)} – {formatDate(statements[0].statement_date)}
-                    </p>
-                  )}
-                </div>
-
-                <div className="border-t pt-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Transactions
-                    </p>
-                    {!!txSummary?.count && (
-                      <button
-                        onClick={deleteTransactions}
-                        disabled={!!deletingKey}
-                        className="text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors"
-                      >
-                        {deletingKey === "t:all" ? "Deleting…" : "Delete all"}
-                      </button>
-                    )}
-                  </div>
-                  {!txSummary?.count ? (
-                    <p className="text-xs text-muted-foreground">No transactions yet.</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      {txSummary.count} rows
-                      {txSummary.minDate && txSummary.maxDate && (
-                        <> · {formatDate(txSummary.minDate)} – {formatDate(txSummary.maxDate)}</>
-                      )}
-                    </p>
-                  )}
-                </div>
-              </>
+          <div className="mb-3 rounded-md border bg-muted/30 p-2">
+            {loadingData ? (
+              <p className="text-xs text-muted-foreground">Loading…</p>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  {!txSummary?.count
+                    ? "No data yet."
+                    : `${txSummary.count} transactions · ${formatDate(txSummary.minDate!)} – ${formatDate(txSummary.maxDate!)}`}
+                </p>
+                {!!txSummary?.count && (
+                  <button
+                    onClick={deleteAll}
+                    disabled={deleting}
+                    className="text-[11px] shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-50 transition-colors"
+                  >
+                    {deleting ? "Deleting…" : "Delete all"}
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

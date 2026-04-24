@@ -49,7 +49,7 @@ function monthLabel(dateStr: string) {
   });
 }
 
-export function usePortfolioData(userId: string) {
+export function usePortfolioData(userId: string, refreshKey = 0) {
   const supabase = createClient();
   const [periods, setPeriods] = useState<PeriodData[]>([]);
   const [holdingsByDate, setHoldingsByDate] = useState<Record<string, Holding[]>>({});
@@ -167,7 +167,7 @@ export function usePortfolioData(userId: string) {
     }
 
     load();
-  }, [userId]);
+  }, [userId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { periods, holdingsByDate, fifoByIsin, loading };
 }

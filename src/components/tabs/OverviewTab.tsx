@@ -11,6 +11,7 @@ import MetricLineChart from "@/components/charts/MetricLineChart";
 
 interface Props {
   userId: string;
+  refreshKey?: number;
 }
 
 function fmt(n: number) {
@@ -26,8 +27,8 @@ function fmtPct(n: number) {
   return (n >= 0 ? "+" : "") + n.toFixed(1) + "%";
 }
 
-export default function OverviewTab({ userId }: Props) {
-  const { periods, holdingsByDate, fifoByIsin, loading } = usePortfolioData(userId);
+export default function OverviewTab({ userId, refreshKey }: Props) {
+  const { periods, holdingsByDate, fifoByIsin, loading } = usePortfolioData(userId, refreshKey);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const dates = periods.map((p) => p.date);

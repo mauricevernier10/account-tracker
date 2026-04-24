@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -16,6 +17,7 @@ interface Props {
 export default function DashboardShell({ userId }: Props) {
   const supabase = createClient();
   const router = useRouter();
+  const [refreshKey, setRefreshKey] = useState(0);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -25,7 +27,6 @@ export default function DashboardShell({ userId }: Props) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Top nav */}
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-3 sm:gap-3">
           <span className="font-semibold tracking-tight truncate">
@@ -33,7 +34,7 @@ export default function DashboardShell({ userId }: Props) {
             <span className="sm:hidden">Account Tracker</span>
           </span>
           <div className="flex items-center gap-1.5 shrink-0 sm:gap-3">
-            <UploadButton userId={userId} />
+            <UploadButton userId={userId} onDataChanged={() => setRefreshKey((k) => k + 1)} />
             <Button variant="ghost" size="sm" onClick={signOut} className="px-2 sm:px-3">
               <span className="hidden sm:inline">Sign out</span>
               <span className="sm:hidden">Out</span>
@@ -42,7 +43,6 @@ export default function DashboardShell({ userId }: Props) {
         </div>
       </header>
 
-      {/* Main content */}
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
         <Tabs defaultValue="overview">
           <TabsList className="mb-6">
@@ -54,7 +54,7 @@ export default function DashboardShell({ userId }: Props) {
           </TabsList>
 
           <TabsContent value="overview">
-            <OverviewTab userId={userId} />
+            <OverviewTab userId={userId} refreshKey={refreshKey} />
           </TabsContent>
 
           <TabsContent value="holdings">
@@ -62,11 +62,11 @@ export default function DashboardShell({ userId }: Props) {
           </TabsContent>
 
           <TabsContent value="transactions">
-            <TransactionsTab userId={userId} />
+            <TransactionsTab userId={userId} refreshKey={refreshKey} />
           </TabsContent>
 
           <TabsContent value="tax">
-            <TaxTab userId={userId} />
+            <TaxTab userId={userId} refreshKey={refreshKey} />
           </TabsContent>
 
           <TabsContent value="settings">

@@ -6,6 +6,7 @@ import { useTransactions } from "@/hooks/useTransactions";
 
 interface Props {
   userId: string;
+  refreshKey?: number;
 }
 
 const TAX_RATE = 0.26375; // 25% KapESt + 5.5% Soli
@@ -37,8 +38,8 @@ function KpiCard({ label, value, sub, color }: { label: string; value: string; s
   );
 }
 
-export default function TaxTab({ userId }: Props) {
-  const { transactions, loading } = useTransactions(userId);
+export default function TaxTab({ userId, refreshKey }: Props) {
+  const { transactions, loading } = useTransactions(userId, refreshKey);
   const [fsa, setFsa] = useState(1000);
 
   const years = useMemo(() => {

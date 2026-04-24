@@ -20,7 +20,7 @@ export interface TxRow {
   costBasis: number | null;
 }
 
-export function useTransactions(userId: string) {
+export function useTransactions(userId: string, refreshKey = 0) {
   const supabase = createClient();
   const [transactions, setTransactions] = useState<TxRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,7 +85,7 @@ export function useTransactions(userId: string) {
       setLoading(false);
     }
     load();
-  }, [userId]);
+  }, [userId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { transactions, loading };
 }
