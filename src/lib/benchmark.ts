@@ -14,6 +14,33 @@ export const BENCHMARKS = [
 
 export type BenchmarkTicker = (typeof BENCHMARKS)[number]["ticker"];
 
+// Filter periods to those on or after `fromDate` and rebase cumulative
+// totals so the first visible period contributes only its own values.
+// If `fromDate` is null/empty, returns periods unchanged.
+export function filterPeriodsFrom(
+  periods: PeriodData[],
+  fromDate: string | null,
+): PeriodData[] {
+  if (!fromDate) return periods;
+  const visible = periods.filter((p) => p.date >= fromDate);
+  if (!visible.length) return [];
+  const baseCumNet = visible[0].cumNetInvested - visible[0].netInvested;
+  const baseCumPrice = visible[0].cumPriceEffect - visible[0].priceEffect;
+  return visible.map((p) => ({
+    ...p,
+    cumNetInvested: p.cumNetInvested - baseCumNet,
+    cumPriceEffect: p.cumPriceEffect - baseCumPrice,
+  }));
+}
+
+// Re-seed the first period's netInvested with its portfolio value, so a
+// cashflow-matched benchmark starts at the same value as the portfolio
+// when running a "since X" comparison.
+export function seedFirstPeriod(periods: PeriodData[]): PeriodData[] {
+  if (!periods.length) return periods;
+  return periods.map((p, i) => (i === 0 ? { ...p, netInvested: p.value } : p));
+}
+
 function priceOnOrBefore(
   sortedPrices: { date: string; close: number }[],
   target: string,

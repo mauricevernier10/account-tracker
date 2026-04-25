@@ -8,7 +8,13 @@ import AllocationChart from "@/components/charts/AllocationChart";
 import ValueDecompositionChart from "@/components/charts/ValueDecompositionChart";
 import CumulativePriceEffectChart from "@/components/charts/CumulativePriceEffectChart";
 import MetricLineChart from "@/components/charts/MetricLineChart";
-import { BENCHMARKS, computeCashflowBenchmark, type BenchmarkTicker } from "@/lib/benchmark";
+import {
+  BENCHMARKS,
+  computeCashflowBenchmark,
+  filterPeriodsFrom,
+  seedFirstPeriod,
+  type BenchmarkTicker,
+} from "@/lib/benchmark";
 
 interface Props {
   userId: string;
@@ -29,11 +35,17 @@ function fmtPct(n: number) {
 }
 
 export default function OverviewTab({ userId, refreshKey }: Props) {
-  const { periods, holdingsByDate, fifoByIsin, loading } = usePortfolioData(userId, refreshKey);
+  const { periods: allPeriods, holdingsByDate, fifoByIsin, loading } = usePortfolioData(userId, refreshKey);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [fromDate, setFromDate] = useState<string>("");
   const [benchmarkTicker, setBenchmarkTicker] = useState<BenchmarkTicker | "">("");
   const [benchmarkPrices, setBenchmarkPrices] = useState<{ date: string; close: number }[]>([]);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
+
+  const periods = useMemo(
+    () => filterPeriodsFrom(allPeriods, fromDate || null),
+    [allPeriods, fromDate],
+  );
 
   useEffect(() => {
     if (!benchmarkTicker || !periods.length) { setBenchmarkPrices([]); return; }
@@ -47,9 +59,15 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
       .finally(() => setBenchmarkLoading(false));
   }, [benchmarkTicker, periods.length, periods[0]?.date]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // For a since-date comparison, seed the benchmark at the portfolio's
+  // value at fromDate so both lines start at the same point.
+  const benchmarkInputPeriods = useMemo(
+    () => (fromDate ? seedFirstPeriod(periods) : periods),
+    [periods, fromDate],
+  );
   const benchmarkValues = useMemo(
-    () => computeCashflowBenchmark(periods, benchmarkPrices),
-    [periods, benchmarkPrices],
+    () => computeCashflowBenchmark(benchmarkInputPeriods, benchmarkPrices),
+    [benchmarkInputPeriods, benchmarkPrices],
   );
   const benchmarkByDate = useMemo(
     () => new Map(benchmarkValues.map((b) => [b.date, b.value])),
@@ -57,7 +75,8 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
   );
 
   const dates = periods.map((p) => p.date);
-  const effectiveDate = selectedDate ?? dates[dates.length - 1] ?? null;
+  const inRange = selectedDate != null && dates.includes(selectedDate);
+  const effectiveDate = inRange ? selectedDate : dates[dates.length - 1] ?? null;
   const selectedIdx = effectiveDate ? dates.indexOf(effectiveDate) : -1;
 
   const currentPeriod = selectedIdx >= 0 ? periods[selectedIdx] : null;
@@ -102,20 +121,37 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Statement selector */}
-      <div className="flex items-center gap-3">
-        <label className="text-sm text-muted-foreground">Statement</label>
-        <select
-          value={effectiveDate ?? ""}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="rounded-md border px-3 py-1.5 text-sm bg-background"
-        >
-          {[...dates].reverse().map((d) => (
-            <option key={d} value={d}>
-              {new Date(d).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
-            </option>
-          ))}
-        </select>
+      {/* Statement + Since selectors */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground">Statement</label>
+          <select
+            value={effectiveDate ?? ""}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="rounded-md border px-3 py-1.5 text-sm bg-background"
+          >
+            {[...dates].reverse().map((d) => (
+              <option key={d} value={d}>
+                {new Date(d).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground">Since</label>
+          <select
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="rounded-md border px-3 py-1.5 text-sm bg-background"
+          >
+            <option value="">All time</option>
+            {allPeriods.map((p) => (
+              <option key={p.date} value={p.date}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* KPI cards */}
