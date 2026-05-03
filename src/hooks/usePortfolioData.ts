@@ -49,10 +49,20 @@ function monthLabel(dateStr: string) {
   });
 }
 
+export interface PeriodBreakdown {
+  // Per-position price effect for this period: v_curr − v_prev − buys + sells
+  priceByName: Record<string, number>;
+  // Per-position net invested for this period: buys − sells (or initial value for period 0)
+  investByName: Record<string, number>;
+  // True for the very first statement: there is no prior period to compute price effect against.
+  noPriorPeriod: boolean;
+}
+
 export function usePortfolioData(userId: string, refreshKey = 0) {
   const supabase = createClient();
   const [periods, setPeriods] = useState<PeriodData[]>([]);
   const [holdingsByDate, setHoldingsByDate] = useState<Record<string, Holding[]>>({});
+  const [breakdownByDate, setBreakdownByDate] = useState<Record<string, PeriodBreakdown>>({});
   const [fifoByIsin, setFifoByIsin] = useState<Map<string, FifoResult>>(new Map());
   const [loading, setLoading] = useState(true);
 
@@ -87,6 +97,7 @@ export function usePortfolioData(userId: string, refreshKey = 0) {
       const dates = Object.keys(byDate).sort();
 
       const result: PeriodData[] = [];
+      const breakdown: Record<string, PeriodBreakdown> = {};
       let cumNetInvested = 0;
       let cumPriceEffect = 0;
 
@@ -101,19 +112,20 @@ export function usePortfolioData(userId: string, refreshKey = 0) {
           dPrev ? tx.date > dPrev && tx.date <= d : tx.date <= d
         );
 
-        const buys  = periodTxns
-          .filter((tx) => tx.direction === "buy")
-          .reduce((s, tx) => s + Math.abs(tx.amount_eur), 0);
-        const sells = periodTxns
-          .filter((tx) => tx.direction === "sell")
-          .reduce((s, tx) => s + Math.abs(tx.amount_eur), 0);
-
+        const buysByIsin: Record<string, number> = {};
+        const sellsByIsin: Record<string, number> = {};
+        for (const tx of periodTxns) {
+          if (!tx.isin) continue;
+          const amt = Math.abs(tx.amount_eur);
+          if (tx.direction === "buy") buysByIsin[tx.isin] = (buysByIsin[tx.isin] ?? 0) + amt;
+          else if (tx.direction === "sell") sellsByIsin[tx.isin] = (sellsByIsin[tx.isin] ?? 0) + amt;
+        }
+        const buys = Object.values(buysByIsin).reduce((s, v) => s + v, 0);
+        const sells = Object.values(sellsByIsin).reduce((s, v) => s + v, 0);
         const netInvested = buys - sells;
 
         let priceEffect: number;
         if (!dPrev) {
-          // Period 0: if we have pre-statement transaction data, split correctly.
-          // Without it, treat full value as invested so later periods track deltas.
           priceEffect = (buys > 0 || sells > 0)
             ? Math.round((value - netInvested) * 100) / 100
             : 0;
@@ -122,10 +134,43 @@ export function usePortfolioData(userId: string, refreshKey = 0) {
           priceEffect = Math.round((value - prevValue - buys + sells) * 100) / 100;
         }
 
-        // Period 0 no-data fallback: seed cumNetInvested with full value
         const effectiveNetInvested = (!dPrev && buys === 0 && sells === 0) ? value : netInvested;
         cumNetInvested += effectiveNetInvested;
         cumPriceEffect += priceEffect;
+
+        // Per-position breakdown
+        const currByIsin: Record<string, Holding> = {};
+        for (const h of byDate[d]) currByIsin[h.isin] = h;
+        const prevByIsin: Record<string, Holding> = {};
+        if (dPrev) for (const h of byDate[dPrev] ?? []) prevByIsin[h.isin] = h;
+        const allIsins = new Set([...Object.keys(currByIsin), ...Object.keys(prevByIsin)]);
+
+        const priceByName: Record<string, number> = {};
+        const investByName: Record<string, number> = {};
+        const noPrior = !dPrev && buys === 0 && sells === 0;
+
+        for (const isin of allIsins) {
+          const curr = currByIsin[isin];
+          const prev = prevByIsin[isin];
+          const name = curr?.ticker ?? curr?.name ?? prev?.ticker ?? prev?.name ?? isin;
+          const vCurr = curr?.market_value_eur ?? 0;
+          const vPrev = prev?.market_value_eur ?? 0;
+          const b = buysByIsin[isin] ?? 0;
+          const s = sellsByIsin[isin] ?? 0;
+
+          if (noPrior) {
+            priceByName[name] = 0;
+            investByName[name] = vCurr;
+          } else if (!dPrev) {
+            priceByName[name] = Math.round((vCurr - (b - s)) * 100) / 100;
+            investByName[name] = b - s;
+          } else {
+            priceByName[name] = Math.round((vCurr - vPrev - b + s) * 100) / 100;
+            investByName[name] = b - s;
+          }
+        }
+
+        breakdown[d] = { priceByName, investByName, noPriorPeriod: noPrior };
 
         result.push({
           date: d,
@@ -162,6 +207,7 @@ export function usePortfolioData(userId: string, refreshKey = 0) {
 
       setPeriods(result);
       setHoldingsByDate(byDate);
+      setBreakdownByDate(breakdown);
       setFifoByIsin(fifo);
       setLoading(false);
     }
@@ -169,5 +215,5 @@ export function usePortfolioData(userId: string, refreshKey = 0) {
     load();
   }, [userId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { periods, holdingsByDate, fifoByIsin, loading };
+  return { periods, holdingsByDate, breakdownByDate, fifoByIsin, loading };
 }

@@ -20,29 +20,55 @@ interface Contributor {
 }
 
 export interface DecompositionDataPoint {
+  date: string;
   label: string;
   value: number;
   netInvested: number;
   priceEffect: number;
-  topContributors?: Contributor[];
+  // null = "No prior period" (first statement, no price-effect breakdown)
+  priceContributors: Contributor[] | null;
+  investContributors: Contributor[];
 }
 
 interface Props {
   data: DecompositionDataPoint[];
+  selectedDate?: string | null;
 }
 
-const COLOR_NET_INVESTED = "#2563eb";
-const COLOR_PRICE_EFFECT = "#16a34a";
-const COLOR_NEGATIVE = "#dc2626";
-const COLOR_LINE = "#0f172a";
+// Streamlit reference palette (constants.py)
+const C_TEXT = "#111827";
+const C_MUTED = "#6B7280";
+const C_BORDER = "#E5E7EB";
+const C_ACCENT = "#2563EB";       // net invested positive
+const C_AMBER = "#D97706";        // net invested negative (= net outflow)
+const C_POSITIVE = "#16A34A";     // price effect positive
+const C_NEGATIVE = "#DC2626";     // price effect negative
 
 function fmtSigned(n: number) {
   const sign = n > 0 ? "+" : n < 0 ? "−" : "";
-  return sign + "€" + new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(Math.abs(n));
+  return sign + new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(Math.abs(n)) + " €";
 }
 
 function fmtAbs(n: number) {
-  return "€" + new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(n);
+  return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(n) + " €";
+}
+
+function ContributorList({ items, posColor, negColor }: { items: Contributor[]; posColor: string; negColor: string }) {
+  return (
+    <>
+      {items.map((c, i) => (
+        <div key={i} className="flex justify-between gap-4">
+          <span className="text-muted-foreground truncate">{c.name}</span>
+          <span
+            className="font-medium tabular-nums shrink-0"
+            style={{ color: c.effect >= 0 ? posColor : negColor }}
+          >
+            {fmtSigned(c.effect)}
+          </span>
+        </div>
+      ))}
+    </>
+  );
 }
 
 function CustomTooltip({ active, payload }: any) {
@@ -54,70 +80,52 @@ function CustomTooltip({ active, payload }: any) {
   if (key === "value") {
     return (
       <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs">
-        <p className="font-semibold text-sm mb-1">{d.label}</p>
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ background: COLOR_LINE }} />
-          <span className="text-muted-foreground">Total value</span>
-          <span className="font-medium tabular-nums ml-auto">{fmtAbs(d.value)}</span>
-        </div>
+        <p className="font-semibold text-sm mb-0.5">{d.label}</p>
+        <p>
+          <span className="text-muted-foreground">Total value: </span>
+          <span className="font-semibold tabular-nums">{fmtAbs(d.value)}</span>
+        </p>
       </div>
     );
   }
 
-  if (key === "netInvested") {
-    const color = d.netInvested >= 0 ? COLOR_NET_INVESTED : COLOR_NEGATIVE;
+  if (key === "priceEffect") {
+    if (d.priceContributors === null) {
+      return (
+        <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs">
+          <p className="font-semibold">No prior period</p>
+        </div>
+      );
+    }
+    const color = d.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE;
     return (
-      <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs">
-        <p className="font-semibold text-sm mb-1">{d.label}</p>
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />
-          <span className="text-muted-foreground">Net invested</span>
-          <span className="font-medium tabular-nums ml-auto" style={{ color }}>
-            {fmtSigned(d.netInvested)}
-          </span>
-        </div>
+      <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs space-y-1 max-w-[240px]">
+        <p className="font-semibold" style={{ color }}>
+          Price effect: {fmtSigned(d.priceEffect)}
+        </p>
+        <ContributorList items={d.priceContributors} posColor={C_POSITIVE} negColor={C_NEGATIVE} />
       </div>
     );
   }
 
-  // priceEffect
-  const color = d.priceEffect >= 0 ? COLOR_PRICE_EFFECT : COLOR_NEGATIVE;
+  // netInvested
+  const color = d.netInvested >= 0 ? C_ACCENT : C_AMBER;
   return (
-    <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs space-y-1.5 max-w-[230px]">
-      <p className="font-semibold text-sm">{d.label}</p>
-      <div className="flex items-center gap-2">
-        <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />
-        <span className="text-muted-foreground">Price effect</span>
-        <span className="font-medium tabular-nums ml-auto" style={{ color }}>
-          {fmtSigned(d.priceEffect)}
-        </span>
-      </div>
-      {!!d.topContributors?.length && (
-        <div className="border-t pt-1.5">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Top contributors</p>
-          {d.topContributors.map((c, i) => (
-            <div key={i} className="flex justify-between gap-3">
-              <span className="text-muted-foreground truncate">{c.name}</span>
-              <span
-                className="font-medium tabular-nums shrink-0"
-                style={{ color: c.effect >= 0 ? COLOR_PRICE_EFFECT : COLOR_NEGATIVE }}
-              >
-                {fmtSigned(c.effect)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs space-y-1 max-w-[240px]">
+      <p className="font-semibold" style={{ color }}>
+        Net invested: {fmtSigned(d.netInvested)}
+      </p>
+      <ContributorList items={d.investContributors} posColor={C_ACCENT} negColor={C_AMBER} />
     </div>
   );
 }
 
-export default function ValueDecompositionChart({ data }: Props) {
+export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   const tickInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
 
-  const leftMin = Math.min(...data.map((d) => d.value));
+  // Streamlit: yaxis range = [0, max(values) * 1.3]
   const leftMax = Math.max(...data.map((d) => d.value));
-  const leftPad = (leftMax - leftMin) * 0.12 || leftMax * 0.1;
+  const leftDomain: [number, number] = [0, leftMax * 1.3];
 
   const rightMax = Math.max(
     ...data.map((d) => (d.netInvested > 0 ? d.netInvested : 0) + (d.priceEffect > 0 ? d.priceEffect : 0)),
@@ -129,13 +137,15 @@ export default function ValueDecompositionChart({ data }: Props) {
   );
   const rightPad = (rightMax - rightMin) * 0.18 || 500;
 
+  const selectedLabel = data.find((d) => d.date === selectedDate)?.label;
+
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <ResponsiveContainer width="100%" height={340}>
       <ComposedChart data={data} margin={{ top: 16, right: 64, left: 8, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke={C_BORDER} vertical={false} />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 10, fill: "#6b7280" }}
+          tick={{ fontSize: 10, fill: C_MUTED }}
           axisLine={false}
           tickLine={false}
           interval={tickInterval}
@@ -146,17 +156,17 @@ export default function ValueDecompositionChart({ data }: Props) {
         <YAxis
           yAxisId="left"
           tickFormatter={(v) => "€" + (v / 1000).toFixed(0) + "k"}
-          tick={{ fontSize: 10, fill: "#6b7280" }}
+          tick={{ fontSize: 10, fill: C_MUTED }}
           axisLine={false}
           tickLine={false}
           width={52}
-          domain={[leftMin - leftPad, leftMax + leftPad]}
+          domain={leftDomain}
         />
         <YAxis
           yAxisId="right"
           orientation="right"
           tickFormatter={(v) => (v === 0 ? "0" : (v > 0 ? "+" : "−") + "€" + Math.abs(v / 1000).toFixed(0) + "k")}
-          tick={{ fontSize: 10, fill: "#6b7280" }}
+          tick={{ fontSize: 10, fill: C_MUTED }}
           axisLine={false}
           tickLine={false}
           width={52}
@@ -169,52 +179,49 @@ export default function ValueDecompositionChart({ data }: Props) {
             value === "priceEffect" ? "Price effect" : value === "netInvested" ? "Net invested" : "Total value"
           }
         />
-        <ReferenceLine yAxisId="right" y={0} stroke="#d1d5db" />
+        <ReferenceLine yAxisId="right" y={0} stroke={C_BORDER} />
+        {selectedLabel && (
+          <ReferenceLine
+            yAxisId="left"
+            x={selectedLabel}
+            stroke={C_MUTED}
+            strokeDasharray="4 3"
+            strokeOpacity={0.6}
+          />
+        )}
 
-        <Bar
-          yAxisId="right"
-          dataKey="priceEffect"
-          name="priceEffect"
-          stackId="change"
-          fill={COLOR_PRICE_EFFECT}
-        >
+        <Bar yAxisId="right" dataKey="priceEffect" name="priceEffect" stackId="change" fill={C_POSITIVE}>
           {data.map((d, i) => (
-            <Cell key={i} fill={d.priceEffect >= 0 ? COLOR_PRICE_EFFECT : COLOR_NEGATIVE} />
+            <Cell key={i} fill={d.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE} />
           ))}
         </Bar>
-        <Bar
-          yAxisId="right"
-          dataKey="netInvested"
-          name="netInvested"
-          stackId="change"
-          fill={COLOR_NET_INVESTED}
-        >
+        <Bar yAxisId="right" dataKey="netInvested" name="netInvested" stackId="change" fill={C_ACCENT}>
           {data.map((d, i) => (
-            <Cell key={i} fill={d.netInvested >= 0 ? COLOR_NET_INVESTED : COLOR_NEGATIVE} />
+            <Cell key={i} fill={d.netInvested >= 0 ? C_ACCENT : C_AMBER} />
           ))}
         </Bar>
 
         <Line
           yAxisId="left"
-          type="monotone"
+          type="linear"
           dataKey="value"
           name="value"
-          stroke={COLOR_LINE}
+          stroke={C_TEXT}
           strokeWidth={1.5}
-          strokeDasharray="4 3"
+          strokeDasharray="3 3"
           dot={(dotProps: any) => {
             const { cx, cy, index } = dotProps;
             const isLast = index === data.length - 1;
             return (
               <g key={index}>
-                <circle cx={cx} cy={cy} r={isLast ? 4 : 2.5} fill={COLOR_LINE} />
+                <circle cx={cx} cy={cy} r={isLast ? 4 : 2.5} fill={C_TEXT} />
                 {isLast && (
                   <text
-                    x={cx - 8}
-                    y={cy - 8}
-                    textAnchor="end"
+                    x={cx + 6}
+                    y={cy + 3}
+                    textAnchor="start"
                     fontSize={10}
-                    fill={COLOR_LINE}
+                    fill={C_TEXT}
                     fontWeight={600}
                   >
                     {fmtAbs(dotProps.payload.value)}
@@ -223,7 +230,7 @@ export default function ValueDecompositionChart({ data }: Props) {
               </g>
             );
           }}
-          activeDot={{ r: 4, fill: COLOR_LINE }}
+          activeDot={{ r: 4, fill: C_TEXT }}
         />
       </ComposedChart>
     </ResponsiveContainer>

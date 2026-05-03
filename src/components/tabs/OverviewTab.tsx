@@ -36,7 +36,7 @@ function fmtPct(n: number) {
 }
 
 export default function OverviewTab({ userId, refreshKey }: Props) {
-  const { periods, holdingsByDate, fifoByIsin, loading } = usePortfolioData(userId, refreshKey);
+  const { periods, holdingsByDate, breakdownByDate, fifoByIsin, loading } = usePortfolioData(userId, refreshKey);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>("1Y");
   const [benchmarkTicker, setBenchmarkTicker] = useState<BenchmarkTicker | "">("");
@@ -85,25 +85,30 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
   const currentHoldings = effectiveDate ? (holdingsByDate[effectiveDate] ?? []) : [];
 
   const decompositionData: DecompositionDataPoint[] = useMemo(() => {
+    function topPlusOther(byName: Record<string, number>, total: number) {
+      const entries = Object.entries(byName).map(([name, effect]) => ({ name, effect }));
+      entries.sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect));
+      if (entries.length <= 3) return entries;
+      const top = entries.slice(0, 3);
+      const otherSum = total - top.reduce((s, e) => s + e.effect, 0);
+      return [...top, { name: "Other", effect: Math.round(otherSum * 100) / 100 }];
+    }
+
     return visiblePeriods.map((p) => {
-      const pIdx = periods.findIndex((x) => x.date === p.date);
-      const prev = pIdx > 0 ? periods[pIdx - 1] : null;
-      let topContributors: { name: string; effect: number }[] = [];
-      if (prev) {
-        const currHoldings = holdingsByDate[p.date] ?? [];
-        const prevByIsin = new Map((holdingsByDate[prev.date] ?? []).map((h) => [h.isin, h]));
-        topContributors = currHoldings
-          .flatMap((curr) => {
-            const prevH = prevByIsin.get(curr.isin);
-            if (!prevH) return [];
-            return [{ name: curr.ticker ?? curr.name, effect: prevH.shares * (curr.price_eur - prevH.price_eur) }];
-          })
-          .sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect))
-          .slice(0, 5);
-      }
-      return { label: p.label, value: p.value, netInvested: p.netInvested, priceEffect: p.priceEffect, topContributors };
+      const b = breakdownByDate[p.date];
+      const priceContributors = b?.noPriorPeriod ? null : b ? topPlusOther(b.priceByName, p.priceEffect) : [];
+      const investContributors = b ? topPlusOther(b.investByName, p.netInvested) : [];
+      return {
+        date: p.date,
+        label: p.label,
+        value: p.value,
+        netInvested: p.netInvested,
+        priceEffect: p.priceEffect,
+        priceContributors,
+        investContributors,
+      };
     });
-  }, [visiblePeriods, periods, holdingsByDate]);
+  }, [visiblePeriods, breakdownByDate]);
 
   if (loading) {
     return <p className="text-muted-foreground text-sm">Loading portfolio data…</p>;
@@ -309,7 +314,7 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
           <CardTitle className="text-sm font-medium">Portfolio Value Change Decomposition</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <ValueDecompositionChart data={decompositionData} />
+          <ValueDecompositionChart data={decompositionData} selectedDate={effectiveDate} />
         </CardContent>
       </Card>
 
