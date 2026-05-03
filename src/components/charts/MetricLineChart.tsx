@@ -48,7 +48,10 @@ export default function MetricLineChart({ data, formatter, color = "#2563eb" }: 
           tick={{ fontSize: 10, fill: "#6b7280" }}
           axisLine={false}
           tickLine={false}
-          interval="preserveStartEnd"
+          interval={0}
+          angle={-35}
+          textAnchor="end"
+          height={48}
         />
         <YAxis
           tickFormatter={formatter}

@@ -53,10 +53,13 @@ export default function ValueDecompositionChart({ data }: Props) {
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 11, fill: "#6b7280" }}
+          tick={{ fontSize: 10, fill: "#6b7280" }}
           axisLine={false}
           tickLine={false}
-          interval="preserveStartEnd"
+          interval={0}
+          angle={-35}
+          textAnchor="end"
+          height={48}
         />
         <YAxis
           tickFormatter={(v) => "€" + (v / 1000).toFixed(0) + "k"}
