@@ -31,47 +31,78 @@ interface Props {
   data: DecompositionDataPoint[];
 }
 
-function fmtEur(n: number) {
+const COLOR_NET_INVESTED = "#2563eb";
+const COLOR_PRICE_EFFECT = "#16a34a";
+const COLOR_NEGATIVE = "#dc2626";
+const COLOR_LINE = "#0f172a";
+
+function fmtSigned(n: number) {
   const sign = n > 0 ? "+" : n < 0 ? "−" : "";
   return sign + "€" + new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(Math.abs(n));
 }
 
-function fmtEurAbs(n: number) {
+function fmtAbs(n: number) {
   return "€" + new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(n);
 }
 
 function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
-  const d = payload[0]?.payload as DecompositionDataPoint;
-  return (
-    <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs space-y-1 max-w-[230px]">
-      <p className="font-semibold text-sm mb-1">{d.label}</p>
-      <div className="space-y-0.5">
-        <div className="flex justify-between gap-6">
-          <span className="text-muted-foreground">Portfolio value</span>
-          <span className="font-medium tabular-nums">{fmtEurAbs(d.value)}</span>
+  const entry = payload[0];
+  const d = entry.payload as DecompositionDataPoint;
+  const key = entry.dataKey as "value" | "netInvested" | "priceEffect";
+
+  if (key === "value") {
+    return (
+      <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs">
+        <p className="font-semibold text-sm mb-1">{d.label}</p>
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: COLOR_LINE }} />
+          <span className="text-muted-foreground">Total value</span>
+          <span className="font-medium tabular-nums ml-auto">{fmtAbs(d.value)}</span>
         </div>
-        <div className="flex justify-between gap-6">
+      </div>
+    );
+  }
+
+  if (key === "netInvested") {
+    const color = d.netInvested >= 0 ? COLOR_NET_INVESTED : COLOR_NEGATIVE;
+    return (
+      <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs">
+        <p className="font-semibold text-sm mb-1">{d.label}</p>
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />
           <span className="text-muted-foreground">Net invested</span>
-          <span className={`font-medium tabular-nums ${d.netInvested >= 0 ? "text-blue-600" : "text-red-500"}`}>
-            {fmtEur(d.netInvested)}
-          </span>
-        </div>
-        <div className="flex justify-between gap-6">
-          <span className="text-muted-foreground">Price effect</span>
-          <span className={`font-medium tabular-nums ${d.priceEffect >= 0 ? "text-green-600" : "text-red-500"}`}>
-            {fmtEur(d.priceEffect)}
+          <span className="font-medium tabular-nums ml-auto" style={{ color }}>
+            {fmtSigned(d.netInvested)}
           </span>
         </div>
       </div>
+    );
+  }
+
+  // priceEffect
+  const color = d.priceEffect >= 0 ? COLOR_PRICE_EFFECT : COLOR_NEGATIVE;
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs space-y-1.5 max-w-[230px]">
+      <p className="font-semibold text-sm">{d.label}</p>
+      <div className="flex items-center gap-2">
+        <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />
+        <span className="text-muted-foreground">Price effect</span>
+        <span className="font-medium tabular-nums ml-auto" style={{ color }}>
+          {fmtSigned(d.priceEffect)}
+        </span>
+      </div>
       {!!d.topContributors?.length && (
-        <div className="border-t pt-1.5 mt-1">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Top price contributors</p>
+        <div className="border-t pt-1.5">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Top contributors</p>
           {d.topContributors.map((c, i) => (
             <div key={i} className="flex justify-between gap-3">
               <span className="text-muted-foreground truncate">{c.name}</span>
-              <span className={`font-medium tabular-nums shrink-0 ${c.effect >= 0 ? "text-green-600" : "text-red-500"}`}>
-                {fmtEur(c.effect)}
+              <span
+                className="font-medium tabular-nums shrink-0"
+                style={{ color: c.effect >= 0 ? COLOR_PRICE_EFFECT : COLOR_NEGATIVE }}
+              >
+                {fmtSigned(c.effect)}
               </span>
             </div>
           ))}
@@ -131,7 +162,7 @@ export default function ValueDecompositionChart({ data }: Props) {
           width={52}
           domain={[rightMin - rightPad, rightMax + rightPad]}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={<CustomTooltip />} shared={false} cursor={{ fill: "rgba(15,23,42,0.04)" }} />
         <Legend
           wrapperStyle={{ fontSize: 11, paddingTop: 6 }}
           formatter={(value) =>
@@ -140,14 +171,26 @@ export default function ValueDecompositionChart({ data }: Props) {
         />
         <ReferenceLine yAxisId="right" y={0} stroke="#d1d5db" />
 
-        <Bar yAxisId="right" dataKey="priceEffect" name="priceEffect" stackId="change">
+        <Bar
+          yAxisId="right"
+          dataKey="priceEffect"
+          name="priceEffect"
+          stackId="change"
+          fill={COLOR_PRICE_EFFECT}
+        >
           {data.map((d, i) => (
-            <Cell key={i} fill={d.priceEffect >= 0 ? "#22c55e" : "#ef4444"} />
+            <Cell key={i} fill={d.priceEffect >= 0 ? COLOR_PRICE_EFFECT : COLOR_NEGATIVE} />
           ))}
         </Bar>
-        <Bar yAxisId="right" dataKey="netInvested" name="netInvested" stackId="change">
+        <Bar
+          yAxisId="right"
+          dataKey="netInvested"
+          name="netInvested"
+          stackId="change"
+          fill={COLOR_NET_INVESTED}
+        >
           {data.map((d, i) => (
-            <Cell key={i} fill={d.netInvested >= 0 ? "#3b82f6" : "#ef4444"} />
+            <Cell key={i} fill={d.netInvested >= 0 ? COLOR_NET_INVESTED : COLOR_NEGATIVE} />
           ))}
         </Bar>
 
@@ -156,7 +199,7 @@ export default function ValueDecompositionChart({ data }: Props) {
           type="monotone"
           dataKey="value"
           name="value"
-          stroke="#111827"
+          stroke={COLOR_LINE}
           strokeWidth={1.5}
           strokeDasharray="4 3"
           dot={(dotProps: any) => {
@@ -164,23 +207,23 @@ export default function ValueDecompositionChart({ data }: Props) {
             const isLast = index === data.length - 1;
             return (
               <g key={index}>
-                <circle cx={cx} cy={cy} r={isLast ? 4 : 2.5} fill="#111827" />
+                <circle cx={cx} cy={cy} r={isLast ? 4 : 2.5} fill={COLOR_LINE} />
                 {isLast && (
                   <text
                     x={cx - 8}
                     y={cy - 8}
                     textAnchor="end"
                     fontSize={10}
-                    fill="#111827"
+                    fill={COLOR_LINE}
                     fontWeight={600}
                   >
-                    {fmtEurAbs(dotProps.payload.value)}
+                    {fmtAbs(dotProps.payload.value)}
                   </text>
                 )}
               </g>
             );
           }}
-          activeDot={{ r: 4, fill: "#111827" }}
+          activeDot={{ r: 4, fill: COLOR_LINE }}
         />
       </ComposedChart>
     </ResponsiveContainer>
