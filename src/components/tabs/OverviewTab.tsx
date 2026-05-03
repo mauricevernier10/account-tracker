@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePortfolioData } from "@/hooks/usePortfolioData";
 import PortfolioValueChart from "@/components/charts/PortfolioValueChart";
 import AllocationChart from "@/components/charts/AllocationChart";
-import ValueDecompositionChart from "@/components/charts/ValueDecompositionChart";
+import ValueDecompositionChart, { type DecompositionDataPoint } from "@/components/charts/ValueDecompositionChart";
 import CumulativePriceEffectChart from "@/components/charts/CumulativePriceEffectChart";
 import MetricLineChart from "@/components/charts/MetricLineChart";
 import {
@@ -83,6 +83,27 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
   const currentPeriod = selectedIdx >= 0 ? periods[selectedIdx] : null;
   const prevPeriod = selectedIdx > 0 ? periods[selectedIdx - 1] : null;
   const currentHoldings = effectiveDate ? (holdingsByDate[effectiveDate] ?? []) : [];
+
+  const decompositionData: DecompositionDataPoint[] = useMemo(() => {
+    return visiblePeriods.map((p) => {
+      const pIdx = periods.findIndex((x) => x.date === p.date);
+      const prev = pIdx > 0 ? periods[pIdx - 1] : null;
+      let topContributors: { name: string; effect: number }[] = [];
+      if (prev) {
+        const currHoldings = holdingsByDate[p.date] ?? [];
+        const prevByIsin = new Map((holdingsByDate[prev.date] ?? []).map((h) => [h.isin, h]));
+        topContributors = currHoldings
+          .flatMap((curr) => {
+            const prevH = prevByIsin.get(curr.isin);
+            if (!prevH) return [];
+            return [{ name: curr.ticker ?? curr.name, effect: prevH.shares * (curr.price_eur - prevH.price_eur) }];
+          })
+          .sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect))
+          .slice(0, 5);
+      }
+      return { label: p.label, value: p.value, netInvested: p.netInvested, priceEffect: p.priceEffect, topContributors };
+    });
+  }, [visiblePeriods, periods, holdingsByDate]);
 
   if (loading) {
     return <p className="text-muted-foreground text-sm">Loading portfolio data…</p>;
@@ -285,10 +306,10 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
       {/* Value decomposition */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Value Decomposition — Price Effect vs Net Invested</CardTitle>
+          <CardTitle className="text-sm font-medium">Portfolio Value Change Decomposition</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <ValueDecompositionChart data={visiblePeriods} />
+          <ValueDecompositionChart data={decompositionData} />
         </CardContent>
       </Card>
 
