@@ -47,6 +47,7 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export default function ValueDecompositionChart({ data }: Props) {
+  const tickInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
   return (
     <ResponsiveContainer width="100%" height={240}>
       <ComposedChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
@@ -56,7 +57,7 @@ export default function ValueDecompositionChart({ data }: Props) {
           tick={{ fontSize: 10, fill: "#6b7280" }}
           axisLine={false}
           tickLine={false}
-          interval={0}
+          interval={tickInterval}
           angle={-35}
           textAnchor="end"
           height={48}

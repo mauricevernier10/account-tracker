@@ -73,6 +73,7 @@ export default function PortfolioValueChart({ data, selectedDate, benchmarkLabel
   const max = Math.max(...allValues);
   const padding = (max - min) * 0.1 || max * 0.1;
   const hasBenchmark = data.some((d) => d.benchmark != null);
+  const tickInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
 
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -83,7 +84,7 @@ export default function PortfolioValueChart({ data, selectedDate, benchmarkLabel
           tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
           axisLine={false}
           tickLine={false}
-          interval={0}
+          interval={tickInterval}
           angle={-35}
           textAnchor="end"
           height={48}

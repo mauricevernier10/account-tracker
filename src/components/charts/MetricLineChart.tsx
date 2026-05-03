@@ -38,6 +38,7 @@ export default function MetricLineChart({ data, formatter, color = "#2563eb" }: 
   const min = Math.min(...values);
   const max = Math.max(...values);
   const padding = (max - min) * 0.15 || max * 0.1;
+  const tickInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
 
   return (
     <ResponsiveContainer width="100%" height={180}>
@@ -48,7 +49,7 @@ export default function MetricLineChart({ data, formatter, color = "#2563eb" }: 
           tick={{ fontSize: 10, fill: "#6b7280" }}
           axisLine={false}
           tickLine={false}
-          interval={0}
+          interval={tickInterval}
           angle={-35}
           textAnchor="end"
           height={48}

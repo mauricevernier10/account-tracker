@@ -58,6 +58,7 @@ export default function CumulativePriceEffectChart({ data }: Props) {
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 0);
   const padding = (max - min) * 0.15 || 100;
+  const tickInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
 
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -74,7 +75,7 @@ export default function CumulativePriceEffectChart({ data }: Props) {
           tick={{ fontSize: 10, fill: "#6b7280" }}
           axisLine={false}
           tickLine={false}
-          interval={0}
+          interval={tickInterval}
           angle={-35}
           textAnchor="end"
           height={48}
