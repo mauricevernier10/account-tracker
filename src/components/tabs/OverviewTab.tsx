@@ -65,20 +65,20 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
     [benchmarkValues],
   );
 
-  // Charts show only the selected timeframe window.
-  const visiblePeriods = useMemo(() => {
-    if (timeframe === "All" || !periods.length) return periods;
-    const months = timeframe === "6M" ? 6 : timeframe === "1Y" ? 12 : 24;
-    const cutoff = new Date(periods[periods.length - 1].date);
-    cutoff.setMonth(cutoff.getMonth() - months);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
-    return periods.filter((p) => p.date >= cutoffStr);
-  }, [periods, timeframe]);
-
   const dates = periods.map((p) => p.date);
   const inRange = selectedDate != null && dates.includes(selectedDate);
   const effectiveDate = inRange ? selectedDate : dates[dates.length - 1] ?? null;
   const selectedIdx = effectiveDate ? dates.indexOf(effectiveDate) : -1;
+
+  // Charts show only the selected timeframe window, anchored to the selected statement date.
+  const visiblePeriods = useMemo(() => {
+    if (timeframe === "All" || !effectiveDate) return periods;
+    const months = timeframe === "6M" ? 6 : timeframe === "1Y" ? 12 : 24;
+    const cutoff = new Date(effectiveDate);
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return periods.filter((p) => p.date <= effectiveDate && p.date >= cutoffStr);
+  }, [periods, timeframe, effectiveDate]);
 
   const currentPeriod = selectedIdx >= 0 ? periods[selectedIdx] : null;
   const prevPeriod = selectedIdx > 0 ? periods[selectedIdx - 1] : null;
