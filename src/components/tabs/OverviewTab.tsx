@@ -14,6 +14,9 @@ import {
   type BenchmarkTicker,
 } from "@/lib/benchmark";
 
+type Timeframe = "6M" | "1Y" | "2Y" | "All";
+const TIMEFRAMES: Timeframe[] = ["6M", "1Y", "2Y", "All"];
+
 interface Props {
   userId: string;
   refreshKey?: number;
@@ -35,6 +38,7 @@ function fmtPct(n: number) {
 export default function OverviewTab({ userId, refreshKey }: Props) {
   const { periods, holdingsByDate, fifoByIsin, loading } = usePortfolioData(userId, refreshKey);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [timeframe, setTimeframe] = useState<Timeframe>("1Y");
   const [benchmarkTicker, setBenchmarkTicker] = useState<BenchmarkTicker | "">("");
   const [benchmarkPrices, setBenchmarkPrices] = useState<{ date: string; close: number }[]>([]);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
@@ -51,6 +55,7 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
       .finally(() => setBenchmarkLoading(false));
   }, [benchmarkTicker, periods.length, periods[0]?.date]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Cashflow matching uses all periods so historical investments are accounted for.
   const benchmarkValues = useMemo(
     () => computeCashflowBenchmark(periods, benchmarkPrices),
     [periods, benchmarkPrices],
@@ -59,6 +64,16 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
     () => new Map(benchmarkValues.map((b) => [b.date, b.value])),
     [benchmarkValues],
   );
+
+  // Charts show only the selected timeframe window.
+  const visiblePeriods = useMemo(() => {
+    if (timeframe === "All" || !periods.length) return periods;
+    const months = timeframe === "6M" ? 6 : timeframe === "1Y" ? 12 : 24;
+    const cutoff = new Date(periods[periods.length - 1].date);
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return periods.filter((p) => p.date >= cutoffStr);
+  }, [periods, timeframe]);
 
   const dates = periods.map((p) => p.date);
   const inRange = selectedDate != null && dates.includes(selectedDate);
@@ -85,7 +100,7 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
   const delta = currentPeriod && prevPeriod ? currentPeriod.value - prevPeriod.value : null;
   const deltaPct = delta != null && prevPeriod ? (delta / prevPeriod.value) * 100 : null;
 
-  const chartData = periods.map((p) => ({
+  const chartData = visiblePeriods.map((p) => ({
     date: p.date,
     label: p.label,
     value: p.value,
@@ -102,25 +117,42 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
     }))
     .sort((a, b) => b.value - a.value);
 
-  const positionsData = periods.map((p) => ({ label: p.label, value: p.positions }));
-  const avgSizeData = periods.map((p) => ({ label: p.label, value: p.avgSize }));
+  const positionsData = visiblePeriods.map((p) => ({ label: p.label, value: p.positions }));
+  const avgSizeData = visiblePeriods.map((p) => ({ label: p.label, value: p.avgSize }));
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Statement selector */}
-      <div className="flex items-center gap-2">
-        <label className="text-sm text-muted-foreground">Statement</label>
-        <select
-          value={effectiveDate ?? ""}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="rounded-md border px-3 py-1.5 text-sm bg-background"
-        >
-          {[...dates].reverse().map((d) => (
-            <option key={d} value={d}>
-              {new Date(d).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
-            </option>
+      {/* Controls row */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground">Statement</label>
+          <select
+            value={effectiveDate ?? ""}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="rounded-md border px-3 py-1.5 text-sm bg-background"
+          >
+            {[...dates].reverse().map((d) => (
+              <option key={d} value={d}>
+                {new Date(d).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+          {TIMEFRAMES.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTimeframe(t)}
+              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                timeframe === t
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {t}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       {/* KPI cards */}
@@ -256,7 +288,7 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
           <CardTitle className="text-sm font-medium">Value Decomposition — Price Effect vs Net Invested</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <ValueDecompositionChart data={periods} />
+          <ValueDecompositionChart data={visiblePeriods} />
         </CardContent>
       </Card>
 
@@ -266,7 +298,7 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
           <CardTitle className="text-sm font-medium">Cumulative Price Effect</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <CumulativePriceEffectChart data={periods} />
+          <CumulativePriceEffectChart data={visiblePeriods} />
         </CardContent>
       </Card>
 
