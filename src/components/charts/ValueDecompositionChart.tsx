@@ -145,8 +145,26 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   const leftMax = Math.max(...data.map((d) => d.value));
   const leftDomain: [number, number] = [0, leftMax * 1.3];
 
-  // Cumulative stacking: per period, visible range spans 0, priceEffect, and priceEffect + netInvested.
-  const stackBounds = data.flatMap((d) => [0, d.priceEffect, d.priceEffect + d.netInvested]);
+  // Precompute ranged bar values [y0, y1] for each period.
+  // When pe < 0 and ni > 0: sign-separated (green above axis, red below).
+  // All other cases: cumulative from 0 (stacked in the same direction).
+  const chartData = data.map((d) => {
+    const pe = d.priceEffect;
+    const ni = d.netInvested;
+    const signSeparated = pe < 0 && ni > 0;
+    return {
+      ...d,
+      priceBarRange: signSeparated ? ([pe, 0] as [number, number]) : ([0, pe] as [number, number]),
+      investBarRange: signSeparated ? ([0, ni] as [number, number]) : ([pe, pe + ni] as [number, number]),
+    };
+  });
+
+  // Domain must cover all bar endpoints across both layouts.
+  const stackBounds = data.flatMap((d) => {
+    const pe = d.priceEffect;
+    const ni = d.netInvested;
+    return pe < 0 && ni > 0 ? [0, pe, ni] : [0, pe, pe + ni];
+  });
   const rightMax = Math.max(...stackBounds, 0);
   const rightMin = Math.min(...stackBounds, 0);
   const rightPad = (rightMax - rightMin) * 0.18 || 500;
@@ -162,7 +180,7 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   return (
     <div ref={containerRef} className="relative" onMouseLeave={() => setHover(null)}>
       <ResponsiveContainer width="100%" height={360}>
-        <ComposedChart data={data} stackOffset="none" margin={{ top: 16, right: 72, left: 24, bottom: 0 }}>
+        <ComposedChart data={chartData} margin={{ top: 16, right: 72, left: 24, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={C_BORDER} vertical={false} />
           <XAxis
             dataKey="label"
@@ -228,29 +246,27 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
 
           <Bar
             yAxisId="right"
-            dataKey="priceEffect"
+            dataKey="priceBarRange"
             name="priceEffect"
-            stackId="change"
             fill={C_POSITIVE}
             onMouseEnter={(_p: any, idx: number, ev: any) => setHoverFromEvent("price", idx, ev)}
             onMouseMove={(_p: any, idx: number, ev: any) => setHoverFromEvent("price", idx, ev)}
             onMouseLeave={() => setHover(null)}
           >
-            {data.map((d, i) => (
+            {chartData.map((d, i) => (
               <Cell key={i} fill={d.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE} />
             ))}
           </Bar>
           <Bar
             yAxisId="right"
-            dataKey="netInvested"
+            dataKey="investBarRange"
             name="netInvested"
-            stackId="change"
             fill={C_ACCENT}
             onMouseEnter={(_p: any, idx: number, ev: any) => setHoverFromEvent("invest", idx, ev)}
             onMouseMove={(_p: any, idx: number, ev: any) => setHoverFromEvent("invest", idx, ev)}
             onMouseLeave={() => setHover(null)}
           >
-            {data.map((d, i) => (
+            {chartData.map((d, i) => (
               <Cell key={i} fill={d.netInvested >= 0 ? C_ACCENT : C_AMBER} />
             ))}
           </Bar>
@@ -265,7 +281,7 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
             strokeDasharray="3 3"
             dot={(dotProps: any) => {
               const { cx, cy, index } = dotProps;
-              const isLast = index === data.length - 1;
+              const isLast = index === chartData.length - 1;
               return (
                 <g
                   key={index}
