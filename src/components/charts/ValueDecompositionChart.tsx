@@ -145,14 +145,10 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   const leftMax = Math.max(...data.map((d) => d.value));
   const leftDomain: [number, number] = [0, leftMax * 1.3];
 
-  const rightMax = Math.max(
-    ...data.map((d) => (d.netInvested > 0 ? d.netInvested : 0) + (d.priceEffect > 0 ? d.priceEffect : 0)),
-    0,
-  );
-  const rightMin = Math.min(
-    ...data.map((d) => (d.netInvested < 0 ? d.netInvested : 0) + (d.priceEffect < 0 ? d.priceEffect : 0)),
-    0,
-  );
+  // Cumulative stacking: per period, visible range spans 0, priceEffect, and priceEffect + netInvested.
+  const stackBounds = data.flatMap((d) => [0, d.priceEffect, d.priceEffect + d.netInvested]);
+  const rightMax = Math.max(...stackBounds, 0);
+  const rightMin = Math.min(...stackBounds, 0);
   const rightPad = (rightMax - rightMin) * 0.18 || 500;
 
   const selectedLabel = data.find((d) => d.date === selectedDate)?.label;
@@ -166,7 +162,7 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   return (
     <div ref={containerRef} className="relative" onMouseLeave={() => setHover(null)}>
       <ResponsiveContainer width="100%" height={360}>
-        <ComposedChart data={data} margin={{ top: 16, right: 72, left: 24, bottom: 0 }}>
+        <ComposedChart data={data} stackOffset="none" margin={{ top: 16, right: 72, left: 24, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={C_BORDER} vertical={false} />
           <XAxis
             dataKey="label"
