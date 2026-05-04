@@ -94,13 +94,24 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
       return [...top, { name: "Other", effect: Math.round(otherSum * 100) / 100 }];
     }
 
+    function shortLabel(d: string) {
+      return new Date(d).toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+    }
+    function longLabel(d: string) {
+      return new Date(d).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+    }
+
     return visiblePeriods.map((p) => {
+      const idx = periods.findIndex((x) => x.date === p.date);
+      const prev = idx > 0 ? periods[idx - 1] : null;
+      const transitionLabel = prev ? `${shortLabel(prev.date)} → ${shortLabel(p.date)}` : longLabel(p.date);
+
       const b = breakdownByDate[p.date];
       const priceContributors = b?.noPriorPeriod ? null : b ? topPlusOther(b.priceByName, p.priceEffect) : [];
       const investContributors = b ? topPlusOther(b.investByName, p.netInvested) : [];
       return {
         date: p.date,
-        label: p.label,
+        label: transitionLabel,
         value: p.value,
         netInvested: p.netInvested,
         priceEffect: p.priceEffect,
@@ -108,7 +119,7 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
         investContributors,
       };
     });
-  }, [visiblePeriods, breakdownByDate]);
+  }, [visiblePeriods, periods, breakdownByDate]);
 
   if (loading) {
     return <p className="text-muted-foreground text-sm">Loading portfolio data…</p>;
