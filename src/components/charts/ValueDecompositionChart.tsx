@@ -66,7 +66,7 @@ function ContributorList({ items, posColor, negColor }: { items: Contributor[]; 
     <>
       {items.map((c, i) => (
         <div key={i} className="flex justify-between gap-4">
-          <span className="text-muted-foreground truncate">{c.name}</span>
+          <span style={{ color: C_MUTED }} className="truncate">{c.name}</span>
           <span
             className="font-medium tabular-nums shrink-0"
             style={{ color: c.effect >= 0 ? posColor : negColor }}
@@ -83,54 +83,114 @@ function HoverCard({ hover, data }: { hover: Hover; data: DecompositionDataPoint
   const d = data[hover.index];
   if (!d) return null;
 
+  const totalChange = d.priceEffect + d.netInvested;
+  const totalColor = totalChange >= 0 ? C_POSITIVE : C_NEGATIVE;
+
   let body: React.ReactNode;
   if (hover.kind === "value") {
     body = (
       <>
-        <p className="font-semibold text-sm mb-0.5">{d.label}</p>
-        <p>
-          <span className="text-muted-foreground">Total value: </span>
-          <span className="font-semibold tabular-nums">{fmtAbs(d.value)}</span>
-        </p>
+        {/* Header row: period label + swatch */}
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="inline-block h-2 w-2 rounded-full flex-shrink-0" style={{ background: C_TEXT }} />
+          <span className="font-semibold" style={{ color: C_TEXT }}>{d.label}</span>
+        </div>
+        <div className="flex justify-between gap-6">
+          <span style={{ color: C_MUTED }}>Portfolio value</span>
+          <span className="font-semibold tabular-nums" style={{ color: C_TEXT }}>{fmtAbs(d.value)}</span>
+        </div>
+        {d.priceContributors !== null && (
+          <>
+            <div className="flex justify-between gap-6">
+              <span style={{ color: C_MUTED }}>Price effect</span>
+              <span className="font-medium tabular-nums" style={{ color: d.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE }}>
+                {fmtSigned(d.priceEffect)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-6">
+              <span style={{ color: C_MUTED }}>Net invested</span>
+              <span className="font-medium tabular-nums" style={{ color: d.netInvested >= 0 ? C_ACCENT : C_AMBER }}>
+                {fmtSigned(d.netInvested)}
+              </span>
+            </div>
+          </>
+        )}
       </>
     );
   } else if (hover.kind === "price") {
     if (d.priceContributors === null) {
-      body = <p className="font-semibold">No prior period</p>;
-    } else {
-      const color = d.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE;
       body = (
         <>
-          <p className="font-semibold" style={{ color }}>
-            Price effect: {fmtSigned(d.priceEffect)}
-          </p>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="inline-block h-2 w-2 rounded-sm flex-shrink-0" style={{ background: C_POSITIVE }} />
+            <span className="font-semibold" style={{ color: C_TEXT }}>{d.label}</span>
+          </div>
+          <p style={{ color: C_MUTED }}>No prior period</p>
+        </>
+      );
+    } else {
+      const swatchColor = d.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE;
+      body = (
+        <>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="inline-block h-2 w-2 rounded-sm flex-shrink-0" style={{ background: swatchColor }} />
+            <span className="font-semibold" style={{ color: C_TEXT }}>{d.label}</span>
+          </div>
+          {/* Summary row */}
+          <div className="flex justify-between gap-6">
+            <span style={{ color: C_MUTED }}>Price effect</span>
+            <span className="font-semibold tabular-nums" style={{ color: C_TEXT }}>{fmtSigned(d.priceEffect)}</span>
+          </div>
+          {/* Divider */}
+          <div className="border-t my-1" style={{ borderColor: C_BORDER }} />
+          {/* Per-position breakdown */}
           <ContributorList items={d.priceContributors} posColor={C_POSITIVE} negColor={C_NEGATIVE} />
         </>
       );
     }
   } else {
-    const color = d.netInvested >= 0 ? C_ACCENT : C_AMBER;
+    const swatchColor = d.netInvested >= 0 ? C_ACCENT : C_AMBER;
     body = (
       <>
-        <p className="font-semibold" style={{ color }}>
-          Net invested: {fmtSigned(d.netInvested)}
-        </p>
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="inline-block h-2 w-2 rounded-sm flex-shrink-0" style={{ background: swatchColor }} />
+          <span className="font-semibold" style={{ color: C_TEXT }}>{d.label}</span>
+        </div>
+        {/* Summary row */}
+        <div className="flex justify-between gap-6">
+          <span style={{ color: C_MUTED }}>Net invested</span>
+          <span className="font-semibold tabular-nums" style={{ color: C_TEXT }}>{fmtSigned(d.netInvested)}</span>
+        </div>
+        {/* Divider */}
+        <div className="border-t my-1" style={{ borderColor: C_BORDER }} />
+        {/* Per-position breakdown */}
         <ContributorList items={d.investContributors} posColor={C_ACCENT} negColor={C_AMBER} />
+        {/* Total period change footer */}
+        {d.priceContributors !== null && (
+          <>
+            <div className="border-t mt-1 pt-1" style={{ borderColor: C_BORDER }} />
+            <div className="flex justify-between gap-6">
+              <span style={{ color: C_MUTED }}>Total change</span>
+              <span className="font-semibold tabular-nums" style={{ color: totalColor }}>{fmtSigned(totalChange)}</span>
+            </div>
+          </>
+        )}
       </>
     );
   }
 
-  // Position with offset so the cursor doesn't sit on top of the card
+  // Flip card left if it would overflow the right edge (rough heuristic: x > 60%)
+  const flipX = hover.x > 500;
   const style: CSSProperties = {
     position: "absolute",
-    left: hover.x + 12,
-    top: hover.y + 12,
+    left: flipX ? hover.x - 272 : hover.x + 14,
+    top: hover.y + 14,
     pointerEvents: "none",
     zIndex: 30,
   };
 
   return (
-    <div style={style} className="rounded-lg border bg-background px-3 py-2 shadow-md text-xs space-y-1 max-w-[260px]">
+    <div style={style} className="rounded-lg border bg-white px-3 py-2.5 shadow-lg text-xs space-y-0.5 w-[260px]">
       {body}
     </div>
   );
