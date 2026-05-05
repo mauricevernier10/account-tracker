@@ -12,7 +12,6 @@ import {
   ResponsiveContainer,
   Legend,
   ReferenceLine,
-  Cell,
 } from "recharts";
 
 interface Contributor {
@@ -145,21 +144,7 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   const leftMax = Math.max(...data.map((d) => d.value));
   const leftDomain: [number, number] = [0, leftMax * 1.3];
 
-  // Precompute ranged bar values [y0, y1] for each period.
-  // When pe < 0 and ni > 0: sign-separated (green above axis, red below).
-  // All other cases: cumulative from 0 (stacked in the same direction).
-  const chartData = data.map((d) => {
-    const pe = d.priceEffect;
-    const ni = d.netInvested;
-    const signSeparated = pe < 0 && ni > 0;
-    return {
-      ...d,
-      priceBarRange: signSeparated ? ([pe, 0] as [number, number]) : ([0, pe] as [number, number]),
-      investBarRange: signSeparated ? ([0, ni] as [number, number]) : ([pe, pe + ni] as [number, number]),
-    };
-  });
-
-  // Domain must cover all bar endpoints across both layouts.
+  // Domain must cover all visible bar endpoints across both stacking modes.
   const stackBounds = data.flatMap((d) => {
     const pe = d.priceEffect;
     const ni = d.netInvested;
@@ -168,6 +153,8 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   const rightMax = Math.max(...stackBounds, 0);
   const rightMin = Math.min(...stackBounds, 0);
   const rightPad = (rightMax - rightMin) * 0.18 || 500;
+  const domainMin = rightMin - rightPad;
+  const domainMax = rightMax + rightPad;
 
   const selectedLabel = data.find((d) => d.date === selectedDate)?.label;
 
@@ -177,10 +164,79 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
     setHover({ kind, index, x: ev.clientX - rect.left, y: ev.clientY - rect.top });
   }
 
+  // Render both colored segments (price + invest) inside one column-wide Bar
+  // so they share the same x slot. Pixel positions are derived from the
+  // background rect, which spans the full plot area for the column.
+  function DecomposedBarShape(shapeProps: any) {
+    const { x, width, payload, background, index } = shapeProps;
+    if (!background || !payload) return null;
+    const pe = payload.priceEffect as number;
+    const ni = payload.netInvested as number;
+    const bgY = background.y as number;
+    const bgH = background.height as number;
+    const toY = (v: number) => bgY + (bgH * (domainMax - v)) / (domainMax - domainMin);
+
+    const y0 = toY(0);
+    const yPe = toY(pe);
+    const signSeparated = pe < 0 && ni > 0;
+
+    let priceRect: { y: number; h: number } | null = null;
+    let investRect: { y: number; h: number } | null = null;
+    if (signSeparated) {
+      priceRect = { y: y0, h: yPe - y0 };
+      const yNi = toY(ni);
+      investRect = { y: yNi, h: y0 - yNi };
+    } else {
+      const yTotal = toY(pe + ni);
+      priceRect = { y: Math.min(y0, yPe), h: Math.abs(yPe - y0) };
+      investRect = { y: Math.min(yPe, yTotal), h: Math.abs(yTotal - yPe) };
+    }
+    const peColor = pe >= 0 ? C_POSITIVE : C_NEGATIVE;
+    const niColor = ni >= 0 ? C_ACCENT : C_AMBER;
+
+    return (
+      <g>
+        {priceRect.h > 0 && (
+          <rect x={x} y={priceRect.y} width={width} height={priceRect.h} fill={peColor} />
+        )}
+        {investRect.h > 0 && (
+          <rect x={x} y={investRect.y} width={width} height={investRect.h} fill={niColor} />
+        )}
+        {/* Transparent hover overlays, drawn on top so events fire reliably */}
+        {priceRect.h > 0 && (
+          <rect
+            x={x}
+            y={priceRect.y}
+            width={width}
+            height={priceRect.h}
+            fill="transparent"
+            style={{ cursor: "pointer" }}
+            onMouseEnter={(ev) => setHoverFromEvent("price", index, ev)}
+            onMouseMove={(ev) => setHoverFromEvent("price", index, ev)}
+            onMouseLeave={() => setHover(null)}
+          />
+        )}
+        {investRect.h > 0 && (
+          <rect
+            x={x}
+            y={investRect.y}
+            width={width}
+            height={investRect.h}
+            fill="transparent"
+            style={{ cursor: "pointer" }}
+            onMouseEnter={(ev) => setHoverFromEvent("invest", index, ev)}
+            onMouseMove={(ev) => setHoverFromEvent("invest", index, ev)}
+            onMouseLeave={() => setHover(null)}
+          />
+        )}
+      </g>
+    );
+  }
+
   return (
     <div ref={containerRef} className="relative" onMouseLeave={() => setHover(null)}>
       <ResponsiveContainer width="100%" height={360}>
-        <ComposedChart data={chartData} margin={{ top: 16, right: 72, left: 24, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 16, right: 72, left: 24, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={C_BORDER} vertical={false} />
           <XAxis
             dataKey="label"
@@ -229,9 +285,24 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
           <Tooltip content={() => null} cursor={false} />
           <Legend
             wrapperStyle={{ fontSize: 11, paddingTop: 6 }}
-            formatter={(value) =>
-              value === "priceEffect" ? "Price effect" : value === "netInvested" ? "Net invested" : "Total value"
-            }
+            content={() => (
+              <div className="flex justify-center gap-4 pt-1.5 text-[11px]">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: C_ACCENT }} />
+                  Net invested
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: C_POSITIVE }} />
+                  Price effect
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <svg width="18" height="6" className="inline-block">
+                    <line x1="0" y1="3" x2="18" y2="3" stroke={C_TEXT} strokeWidth="1.5" strokeDasharray="3 3" />
+                  </svg>
+                  Total value
+                </span>
+              </div>
+            )}
           />
           <ReferenceLine yAxisId="right" y={0} stroke={C_BORDER} />
           {selectedLabel && (
@@ -244,32 +315,16 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
             />
           )}
 
+          {/* Single column-wide bar with custom shape that draws both
+              colored segments — guarantees same-x stacking. */}
           <Bar
             yAxisId="right"
-            dataKey="priceBarRange"
-            name="priceEffect"
-            fill={C_POSITIVE}
-            onMouseEnter={(_p: any, idx: number, ev: any) => setHoverFromEvent("price", idx, ev)}
-            onMouseMove={(_p: any, idx: number, ev: any) => setHoverFromEvent("price", idx, ev)}
-            onMouseLeave={() => setHover(null)}
-          >
-            {chartData.map((d, i) => (
-              <Cell key={i} fill={d.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE} />
-            ))}
-          </Bar>
-          <Bar
-            yAxisId="right"
-            dataKey="investBarRange"
-            name="netInvested"
-            fill={C_ACCENT}
-            onMouseEnter={(_p: any, idx: number, ev: any) => setHoverFromEvent("invest", idx, ev)}
-            onMouseMove={(_p: any, idx: number, ev: any) => setHoverFromEvent("invest", idx, ev)}
-            onMouseLeave={() => setHover(null)}
-          >
-            {chartData.map((d, i) => (
-              <Cell key={i} fill={d.netInvested >= 0 ? C_ACCENT : C_AMBER} />
-            ))}
-          </Bar>
+            dataKey="priceEffect"
+            name="decomposed"
+            shape={DecomposedBarShape as any}
+            isAnimationActive={false}
+            legendType="none"
+          />
 
           <Line
             yAxisId="left"
@@ -281,7 +336,7 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
             strokeDasharray="3 3"
             dot={(dotProps: any) => {
               const { cx, cy, index } = dotProps;
-              const isLast = index === chartData.length - 1;
+              const isLast = index === data.length - 1;
               return (
                 <g
                   key={index}
