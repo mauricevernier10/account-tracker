@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, type CSSProperties } from "react";
+import { useState, useRef, useEffect, type CSSProperties } from "react";
 import {
   ComposedChart,
   Bar,
@@ -79,7 +79,25 @@ function ContributorList({ items, posColor, negColor }: { items: Contributor[]; 
   );
 }
 
-function HoverCard({ hover, data }: { hover: Hover; data: DecompositionDataPoint[] }) {
+// Returns the period-end portion of a transition label, e.g.
+//   "Mar 25 → Apr 25" → "Apr 25"
+//   "Apr 2025"        → "Apr 2025"
+function shortLabel(label: string): string {
+  const parts = label.split("→").map((s) => s.trim());
+  return parts[parts.length - 1];
+}
+
+function HoverCard({
+  hover,
+  data,
+  containerWidth,
+  compact,
+}: {
+  hover: Hover;
+  data: DecompositionDataPoint[];
+  containerWidth: number;
+  compact: boolean;
+}) {
   const d = data[hover.index];
   if (!d) return null;
 
@@ -179,18 +197,20 @@ function HoverCard({ hover, data }: { hover: Hover; data: DecompositionDataPoint
     );
   }
 
-  // Flip card left if it would overflow the right edge (rough heuristic: x > 60%)
-  const flipX = hover.x > 500;
+  // Flip the card so it never overflows its container.
+  const cardWidth = compact ? 220 : 260;
+  const flipX = hover.x + cardWidth + 28 > containerWidth;
   const style: CSSProperties = {
     position: "absolute",
-    left: flipX ? hover.x - 272 : hover.x + 14,
+    left: flipX ? Math.max(4, hover.x - cardWidth - 14) : hover.x + 14,
     top: hover.y + 14,
     pointerEvents: "none",
     zIndex: 30,
+    width: cardWidth,
   };
 
   return (
-    <div style={style} className="rounded-lg border bg-white px-3 py-2.5 shadow-lg text-xs space-y-0.5 w-[260px]">
+    <div style={style} className="rounded-lg border bg-white px-3 py-2.5 shadow-lg text-xs space-y-0.5">
       {body}
     </div>
   );
@@ -199,6 +219,29 @@ function HoverCard({ hover, data }: { hover: Hover; data: DecompositionDataPoint
 export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const ro = new ResizeObserver((entries) => {
+      setContainerWidth(entries[0].contentRect.width);
+    });
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
+
+  // Below ~640px we tighten labels, sparse the ticks and drop the inline
+  // last-point value label so things stop colliding.
+  const compact = containerWidth > 0 && containerWidth < 640;
+  const targetTickCount = compact ? 6 : 13;
+  const tickInterval = Math.max(0, Math.ceil(data.length / targetTickCount) - 1);
+
+  // Display copy of the data with shortened labels on narrow viewports.
+  const xData = compact ? data.map((d) => ({ ...d, label: shortLabel(d.label) })) : data;
+  const xSelectedLabel = selectedDate
+    ? xData.find((d) => d.date === selectedDate)?.label
+    : undefined;
 
   // Streamlit: yaxis range = [0, max(values) * 1.3]
   const leftMax = Math.max(...data.map((d) => d.value));
@@ -215,8 +258,6 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
   const rightPad = (rightMax - rightMin) * 0.18 || 500;
   const domainMin = rightMin - rightPad;
   const domainMax = rightMax + rightPad;
-
-  const selectedLabel = data.find((d) => d.date === selectedDate)?.label;
 
   function setHoverFromEvent(kind: HoverKind, index: number, ev: { clientX: number; clientY: number }) {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -295,18 +336,21 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
 
   return (
     <div ref={containerRef} className="relative" onMouseLeave={() => setHover(null)}>
-      <ResponsiveContainer width="100%" height={360}>
-        <ComposedChart data={data} margin={{ top: 16, right: 72, left: 24, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={compact ? 320 : 360}>
+        <ComposedChart
+          data={xData}
+          margin={{ top: 16, right: compact ? 12 : 72, left: compact ? 0 : 24, bottom: 0 }}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke={C_BORDER} vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 9, fill: C_MUTED }}
+            tick={{ fontSize: compact ? 10 : 9, fill: C_MUTED }}
             axisLine={false}
             tickLine={false}
-            interval={0}
+            interval={tickInterval}
             angle={-45}
             textAnchor="end"
-            height={80}
+            height={compact ? 56 : 80}
           />
           <YAxis
             yAxisId="left"
@@ -314,15 +358,19 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
             tick={{ fontSize: 10, fill: C_MUTED }}
             axisLine={false}
             tickLine={false}
-            width={60}
+            width={compact ? 44 : 60}
             domain={leftDomain}
-            label={{
-              value: "Total value (€)",
-              angle: -90,
-              position: "insideLeft",
-              style: { fontSize: 10, fill: C_MUTED, textAnchor: "middle" },
-              offset: 0,
-            }}
+            label={
+              compact
+                ? undefined
+                : {
+                    value: "Total value (€)",
+                    angle: -90,
+                    position: "insideLeft",
+                    style: { fontSize: 10, fill: C_MUTED, textAnchor: "middle" },
+                    offset: 0,
+                  }
+            }
           />
           <YAxis
             yAxisId="right"
@@ -331,22 +379,26 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
             tick={{ fontSize: 10, fill: C_MUTED }}
             axisLine={false}
             tickLine={false}
-            width={64}
+            width={compact ? 48 : 64}
             domain={[rightMin - rightPad, rightMax + rightPad]}
-            label={{
-              value: "Period change (€)",
-              angle: 90,
-              position: "insideRight",
-              style: { fontSize: 10, fill: C_MUTED, textAnchor: "middle" },
-              offset: 0,
-            }}
+            label={
+              compact
+                ? undefined
+                : {
+                    value: "Period change (€)",
+                    angle: 90,
+                    position: "insideRight",
+                    style: { fontSize: 10, fill: C_MUTED, textAnchor: "middle" },
+                    offset: 0,
+                  }
+            }
           />
           {/* Disable Recharts' own tooltip; we render our own absolute card. */}
           <Tooltip content={() => null} cursor={false} />
           <Legend
             wrapperStyle={{ fontSize: 11, paddingTop: 6 }}
             content={() => (
-              <div className="flex justify-center gap-4 pt-1.5 text-[11px]">
+              <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 pt-1.5 text-[11px]">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: C_ACCENT }} />
                   Net invested
@@ -369,10 +421,10 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
             )}
           />
           <ReferenceLine yAxisId="right" y={0} stroke={C_BORDER} />
-          {selectedLabel && (
+          {xSelectedLabel && (
             <ReferenceLine
               yAxisId="left"
-              x={selectedLabel}
+              x={xSelectedLabel}
               stroke={C_MUTED}
               strokeDasharray="4 3"
               strokeOpacity={0.6}
@@ -412,7 +464,7 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
                   {/* Larger transparent hit-area for easier hover */}
                   <circle cx={cx} cy={cy} r={8} fill="transparent" />
                   <circle cx={cx} cy={cy} r={isLast ? 4 : 2.5} fill={C_TEXT} />
-                  {isLast && (
+                  {isLast && !compact && (
                     <text
                       x={cx + 6}
                       y={cy + 3}
@@ -431,7 +483,9 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
           />
         </ComposedChart>
       </ResponsiveContainer>
-      {hover && <HoverCard hover={hover} data={data} />}
+      {hover && (
+        <HoverCard hover={hover} data={data} containerWidth={containerWidth} compact={compact} />
+      )}
     </div>
   );
 }
