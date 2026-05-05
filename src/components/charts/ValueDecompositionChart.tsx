@@ -352,7 +352,11 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
                   Net invested
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: C_POSITIVE }} />
+                  {/* Split swatch: left half green (positive), right half red (negative) */}
+                  <svg width="10" height="10" className="inline-block rounded-sm overflow-hidden flex-shrink-0">
+                    <rect x="0" y="0" width="5" height="10" fill={C_POSITIVE} />
+                    <rect x="5" y="0" width="5" height="10" fill={C_NEGATIVE} />
+                  </svg>
                   Price effect
                 </span>
                 <span className="inline-flex items-center gap-1.5">
