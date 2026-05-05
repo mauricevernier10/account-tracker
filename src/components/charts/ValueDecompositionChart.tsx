@@ -53,7 +53,7 @@ function fmtAbs(n: number) {
   return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(n) + " €";
 }
 
-type HoverKind = "price" | "invest" | "value";
+type HoverKind = "price" | "invest" | "value" | "combined";
 interface Hover {
   kind: HoverKind;
   index: number;
@@ -92,11 +92,13 @@ function HoverCard({
   data,
   containerWidth,
   compact,
+  onDismiss,
 }: {
   hover: Hover;
   data: DecompositionDataPoint[];
   containerWidth: number;
   compact: boolean;
+  onDismiss: () => void;
 }) {
   const d = data[hover.index];
   if (!d) return null;
@@ -105,7 +107,59 @@ function HoverCard({
   const totalColor = totalChange >= 0 ? C_POSITIVE : C_NEGATIVE;
 
   let body: React.ReactNode;
-  if (hover.kind === "value") {
+  if (hover.kind === "combined") {
+    body = (
+      <>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="font-semibold text-sm" style={{ color: C_TEXT }}>{d.label}</span>
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Dismiss"
+            className="-mr-1 px-1.5 py-0.5 rounded text-base leading-none"
+            style={{ color: C_MUTED, pointerEvents: "auto" }}
+          >
+            ×
+          </button>
+        </div>
+        <div className="flex justify-between gap-6">
+          <span style={{ color: C_MUTED }}>Portfolio value</span>
+          <span className="font-semibold tabular-nums" style={{ color: C_TEXT }}>{fmtAbs(d.value)}</span>
+        </div>
+        {d.priceContributors !== null ? (
+          <>
+            <div className="flex justify-between gap-6 mt-1.5">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-sm" style={{ background: d.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE }} />
+                <span style={{ color: C_MUTED }}>Price effect</span>
+              </span>
+              <span className="font-semibold tabular-nums" style={{ color: C_TEXT }}>{fmtSigned(d.priceEffect)}</span>
+            </div>
+            <div className="pl-3.5">
+              <ContributorList items={d.priceContributors} posColor={C_POSITIVE} negColor={C_NEGATIVE} />
+            </div>
+            <div className="flex justify-between gap-6 mt-1.5">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-sm" style={{ background: d.netInvested >= 0 ? C_ACCENT : C_AMBER }} />
+                <span style={{ color: C_MUTED }}>Net invested</span>
+              </span>
+              <span className="font-semibold tabular-nums" style={{ color: C_TEXT }}>{fmtSigned(d.netInvested)}</span>
+            </div>
+            <div className="pl-3.5">
+              <ContributorList items={d.investContributors} posColor={C_ACCENT} negColor={C_AMBER} />
+            </div>
+            <div className="border-t mt-1.5 pt-1" style={{ borderColor: C_BORDER }} />
+            <div className="flex justify-between gap-6">
+              <span style={{ color: C_MUTED }}>Total change</span>
+              <span className="font-semibold tabular-nums" style={{ color: totalColor }}>{fmtSigned(totalChange)}</span>
+            </div>
+          </>
+        ) : (
+          <p className="mt-1" style={{ color: C_MUTED }}>No prior period</p>
+        )}
+      </>
+    );
+  } else if (hover.kind === "value") {
     body = (
       <>
         {/* Header row: period label + swatch */}
@@ -197,20 +251,31 @@ function HoverCard({
     );
   }
 
-  // Flip the card so it never overflows its container.
+  // Combined (mobile) card is pinned to the top of the chart so it never
+  // covers the data the user is inspecting. Otherwise floats next to the cursor.
+  const isPinned = hover.kind === "combined";
   const cardWidth = compact ? 220 : 260;
   const flipX = hover.x + cardWidth + 28 > containerWidth;
-  const style: CSSProperties = {
-    position: "absolute",
-    left: flipX ? Math.max(4, hover.x - cardWidth - 14) : hover.x + 14,
-    top: hover.y + 14,
-    pointerEvents: "none",
-    zIndex: 30,
-    width: cardWidth,
-  };
+  const style: CSSProperties = isPinned
+    ? {
+        position: "absolute",
+        left: 8,
+        right: 8,
+        top: 8,
+        pointerEvents: "none",
+        zIndex: 30,
+      }
+    : {
+        position: "absolute",
+        left: flipX ? Math.max(4, hover.x - cardWidth - 14) : hover.x + 14,
+        top: hover.y + 14,
+        pointerEvents: "none",
+        zIndex: 30,
+        width: cardWidth,
+      };
 
   return (
-    <div style={style} className="rounded-lg border bg-white px-3 py-2.5 shadow-lg text-xs space-y-0.5">
+    <div style={style} className="rounded-lg border bg-white/95 backdrop-blur px-3 py-2.5 shadow-lg text-xs space-y-0.5">
       {body}
     </div>
   );
@@ -303,8 +368,9 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
         {investRect.h > 0 && (
           <rect x={x} y={investRect.y} width={width} height={investRect.h} fill={niColor} />
         )}
-        {/* Transparent hover overlays, drawn on top so events fire reliably */}
-        {priceRect.h > 0 && (
+        {/* Desktop only: transparent hover overlays per segment.
+            On compact, the chart-level onClick handler covers targeting. */}
+        {!compact && priceRect.h > 0 && (
           <rect
             x={x}
             y={priceRect.y}
@@ -317,7 +383,7 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
             onMouseLeave={() => setHover(null)}
           />
         )}
-        {investRect.h > 0 && (
+        {!compact && investRect.h > 0 && (
           <rect
             x={x}
             y={investRect.y}
@@ -334,12 +400,26 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
     );
   }
 
+  // On compact, any tap inside the plot area opens the combined panel for
+  // the nearest period; tapping the same period toggles it off.
+  function handleChartClick(state: { activeTooltipIndex?: number | null } | null) {
+    if (!compact || !state) return;
+    const idx = state.activeTooltipIndex;
+    if (idx == null || idx < 0) return;
+    setHover((prev) =>
+      prev && prev.kind === "combined" && prev.index === idx
+        ? null
+        : { kind: "combined", index: idx, x: 0, y: 0 }
+    );
+  }
+
   return (
     <div ref={containerRef} className="relative" onMouseLeave={() => setHover(null)}>
       <ResponsiveContainer width="100%" height={compact ? 320 : 360}>
         <ComposedChart
           data={xData}
           margin={{ top: 16, right: compact ? 12 : 72, left: compact ? 0 : 24, bottom: 0 }}
+          onClick={compact ? (handleChartClick as any) : undefined}
         >
           <CartesianGrid strokeDasharray="3 3" stroke={C_BORDER} vertical={false} />
           <XAxis
@@ -430,6 +510,16 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
               strokeOpacity={0.6}
             />
           )}
+          {/* Highlight the currently-selected column on mobile */}
+          {compact && hover?.kind === "combined" && xData[hover.index] && (
+            <ReferenceLine
+              yAxisId="left"
+              x={xData[hover.index].label}
+              stroke={C_TEXT}
+              strokeOpacity={0.35}
+              strokeWidth={1.5}
+            />
+          )}
 
           {/* Single column-wide bar with custom shape that draws both
               colored segments — guarantees same-x stacking. */}
@@ -453,16 +543,17 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
             dot={(dotProps: any) => {
               const { cx, cy, index } = dotProps;
               const isLast = index === data.length - 1;
+              const dotEvents = compact
+                ? {}
+                : {
+                    onMouseEnter: (ev: React.MouseEvent) => setHoverFromEvent("value", index, ev),
+                    onMouseMove: (ev: React.MouseEvent) => setHoverFromEvent("value", index, ev),
+                    onMouseLeave: () => setHover(null),
+                  };
               return (
-                <g
-                  key={index}
-                  onMouseEnter={(ev) => setHoverFromEvent("value", index, ev)}
-                  onMouseMove={(ev) => setHoverFromEvent("value", index, ev)}
-                  onMouseLeave={() => setHover(null)}
-                  style={{ cursor: "pointer" }}
-                >
-                  {/* Larger transparent hit-area for easier hover */}
-                  <circle cx={cx} cy={cy} r={8} fill="transparent" />
+                <g key={index} {...dotEvents} style={{ cursor: compact ? "default" : "pointer" }}>
+                  {/* Larger transparent hit-area for easier hover (desktop only) */}
+                  {!compact && <circle cx={cx} cy={cy} r={8} fill="transparent" />}
                   <circle cx={cx} cy={cy} r={isLast ? 4 : 2.5} fill={C_TEXT} />
                   {isLast && !compact && (
                     <text
@@ -484,7 +575,13 @@ export default function ValueDecompositionChart({ data, selectedDate }: Props) {
         </ComposedChart>
       </ResponsiveContainer>
       {hover && (
-        <HoverCard hover={hover} data={data} containerWidth={containerWidth} compact={compact} />
+        <HoverCard
+          hover={hover}
+          data={data}
+          containerWidth={containerWidth}
+          compact={compact}
+          onDismiss={() => setHover(null)}
+        />
       )}
     </div>
   );
