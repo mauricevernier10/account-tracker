@@ -53,6 +53,13 @@ export function deriveSnapshots(txs: DeriveTx[], endDate: string): DerivedSnapsh
 
   const startDate = sorted[0].date;
   const targetDates = monthEndsBetween(startDate, endDate);
+  // Always emit a snapshot at endDate (today) so the user sees their latest
+  // portfolio state — including transactions in the partial current month.
+  // monthEndsBetween only includes *completed* month-ends, so without this
+  // a tx on e.g. May 1st would be invisible until May 31.
+  if (targetDates[targetDates.length - 1] !== endDate) {
+    targetDates.push(endDate);
+  }
   if (!targetDates.length) return [];
 
   const positions = new Map<string, RunningPosition>();
