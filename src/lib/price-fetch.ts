@@ -97,23 +97,25 @@ export async function fetchEurDivisors(
   const end = new Date(sorted[sorted.length - 1] + "T00:00:00Z");
   end.setUTCDate(end.getUTCDate() + 1);
 
-  let hist: PriceRow[] = [];
-  try {
-    hist = (await yf.historical(pair, {
-      period1: start.toISOString().slice(0, 10),
-      period2: end.toISOString().slice(0, 10),
-      interval: "1d",
-    })) as PriceRow[];
-    hist.sort((a, b) => a.date.getTime() - b.date.getTime());
-  } catch {
-    // Fall back to divisor=1 (no conversion) if FX data unavailable
-  }
+  // Don't catch — silently falling back to rate=1 here would treat native
+  // currency prices as if they were already EUR and inflate values by the
+  // FX ratio. Let the caller mark the ISIN as failed instead.
+  const hist = (await yf.historical(pair, {
+    period1: start.toISOString().slice(0, 10),
+    period2: end.toISOString().slice(0, 10),
+    interval: "1d",
+  })) as PriceRow[];
+  hist.sort((a, b) => a.date.getTime() - b.date.getTime());
 
   for (const target of dates) {
     const cutoff = new Date(target + "T23:59:59Z").getTime();
-    let rate = 1;
+    let rate: number | null = null;
     for (const h of hist) {
       if (h.date.getTime() <= cutoff && h.close) rate = h.close;
+    }
+    if (rate == null) {
+      // No FX data on or before this date — refuse to guess.
+      throw new Error(`No FX rate available for ${pair} on or before ${target}`);
     }
     // EURUSD=X: 1 EUR = rate USD → price_eur = price_usd / rate
     // GBp: price_eur = (price_gbx / 100) / rate_eurgbp → divisor = rate × 100

@@ -28,11 +28,29 @@ export async function POST() {
   const snapshots = deriveSnapshots(txs, today);
   if (!snapshots.length) return NextResponse.json({ count: 0, snapshots: 0 });
 
-  // Flatten snapshots into holdings rows. market_value_eur uses the last known
-  // transaction price — this is a placeholder until the price-fetching phase
-  // lands; share counts are exact.
+  // Read existing snapshot dates so we don't unnecessarily wipe and re-fetch
+  // historical month-ends that have already been priced. Re-deriving them
+  // with placeholder prices and then re-running prices/update is fragile —
+  // any failure in the price step leaves past data wrong.
+  const { data: existingRows } = await supabase
+    .from("holdings")
+    .select("statement_date")
+    .eq("user_id", user.id)
+    .returns<{ statement_date: string }[]>();
+  const existingDates = new Set((existingRows ?? []).map((r) => r.statement_date));
+
+  // Always (re)write today's snapshot so partial-current-month transactions
+  // and share counts stay accurate. For historical month-ends, only write
+  // the ones that aren't already present.
+  const snapsToWrite = snapshots.filter(
+    (s) => s.statement_date === today || !existingDates.has(s.statement_date)
+  );
+  if (!snapsToWrite.length) {
+    return NextResponse.json({ count: 0, snapshots: 0, skipped: snapshots.length });
+  }
+
   const rows: HoldingInsert[] = [];
-  for (const snap of snapshots) {
+  for (const snap of snapsToWrite) {
     for (const p of snap.positions) {
       rows.push({
         user_id: user.id,
@@ -48,8 +66,9 @@ export async function POST() {
     }
   }
 
-  // Clear derivable dates first so removed positions disappear from the snapshot.
-  const datesTouched = snapshots.map((s) => s.statement_date);
+  // Clear only the dates we're about to write (so removed positions on those
+  // dates disappear). Past month-ends not in snapsToWrite stay untouched.
+  const datesTouched = snapsToWrite.map((s) => s.statement_date);
   const { error: delErr } = await supabase
     .from("holdings")
     .delete()
@@ -64,7 +83,8 @@ export async function POST() {
 
   return NextResponse.json({
     count: count ?? rows.length,
-    snapshots: snapshots.length,
+    snapshots: snapsToWrite.length,
+    skipped: snapshots.length - snapsToWrite.length,
     from: datesTouched[0],
     to: datesTouched[datesTouched.length - 1],
   });
