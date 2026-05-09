@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePortfolioData } from "@/hooks/usePortfolioData";
 import PortfolioValueChart from "@/components/charts/PortfolioValueChart";
 import AllocationChart from "@/components/charts/AllocationChart";
@@ -323,6 +323,9 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Portfolio Value Change Decomposition</CardTitle>
+          <CardDescription className="text-xs">
+            Each period compares consecutive month-end statements; the most recent period is a partial month as of today.
+          </CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
           <ValueDecompositionChart data={decompositionData} selectedDate={effectiveDate} />
