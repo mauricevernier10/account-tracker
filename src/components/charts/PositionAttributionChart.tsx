@@ -161,14 +161,21 @@ export default function PositionAttributionChart({ data }: Props) {
 
     const x0 = toX(0);
     const xPe = toX(pe);
-    const signSeparated = pe < 0 && ie > 0;
+    // Sign-separated whenever price and invest point in opposite directions.
+    // Cumulative would let one segment span across zero and visually cover
+    // the other (e.g. BKNG: pe > 0 from a price gain, ie < 0 from proceeds —
+    // an orange bar from -5000 to +5000 swallowing a small green bar).
+    const signSeparated = (pe < 0 && ie > 0) || (pe > 0 && ie < 0);
 
     let priceRect: { x: number; w: number };
     let investRect: { x: number; w: number };
     if (signSeparated) {
-      priceRect = { x: xPe, w: x0 - xPe };
+      // Each segment grows out from zero in its own direction.
       const xIe = toX(ie);
-      investRect = { x: x0, w: xIe - x0 };
+      priceRect =
+        pe >= 0 ? { x: x0, w: xPe - x0 } : { x: xPe, w: x0 - xPe };
+      investRect =
+        ie >= 0 ? { x: x0, w: xIe - x0 } : { x: xIe, w: x0 - xIe };
     } else {
       const xTotal = toX(pe + ie);
       priceRect = { x: Math.min(x0, xPe), w: Math.abs(xPe - x0) };
@@ -177,20 +184,13 @@ export default function PositionAttributionChart({ data }: Props) {
     const peColor = pe >= 0 ? C_POSITIVE : C_NEGATIVE;
     const ieColor = ie >= 0 ? C_ACCENT : C_AMBER;
 
-    // Total label sits just outside the bar's far edge.
-    let labelX: number;
-    let labelAnchor: "start" | "end";
-    if (signSeparated) {
-      const farRight = Math.max(xPe + priceRect.w, investRect.x + investRect.w);
-      labelX = farRight + 6;
-      labelAnchor = "start";
-    } else if (total >= 0) {
-      labelX = toX(total) + 6;
-      labelAnchor = "start";
-    } else {
-      labelX = toX(total) - 6;
-      labelAnchor = "end";
-    }
+    // Total label sits beyond the rightmost bar edge in every row, so the
+    // labels line up vertically and never collide with the segments.
+    const endpoints = signSeparated
+      ? [x0, xPe, toX(ie)]
+      : [x0, xPe, toX(pe + ie)];
+    const labelX = Math.max(...endpoints) + 6;
+    const labelAnchor: "start" = "start";
     const yMid = y + height / 2 + 3.5;
 
     return (
