@@ -368,8 +368,8 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Return Attribution by Position</CardTitle>
           <p className="text-xs text-muted-foreground">
-            How each holding contributed to portfolio change over the selected window.
-            Green/red = price movement, blue/amber = capital deployed/withdrawn.
+            Ranked by gain or loss over the selected window — that's the bold number on each row.
+            Green/red bars show price movement (your actual return); blue/amber bars show net capital you put into or pulled out of the position.
           </p>
         </CardHeader>
         <CardContent className="pt-2">

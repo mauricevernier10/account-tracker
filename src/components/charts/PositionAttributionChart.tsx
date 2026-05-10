@@ -70,9 +70,11 @@ function HoverCard({
       <div className="flex justify-between gap-6">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-sm" style={{ background: r.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE }} />
-          <span style={{ color: C_MUTED }}>Price effect</span>
+          <span style={{ color: C_MUTED }}>Gain / loss</span>
         </span>
-        <span className="font-medium tabular-nums" style={{ color: C_TEXT }}>{fmtSigned(r.priceEffect)}</span>
+        <span className="font-semibold tabular-nums" style={{ color: r.priceEffect >= 0 ? C_POSITIVE : C_NEGATIVE }}>
+          {fmtSigned(r.priceEffect)}
+        </span>
       </div>
       <div className="flex justify-between gap-6">
         <span className="inline-flex items-center gap-1.5">
@@ -81,12 +83,9 @@ function HoverCard({
         </span>
         <span className="font-medium tabular-nums" style={{ color: C_TEXT }}>{fmtSigned(r.investEffect)}</span>
       </div>
-      <div className="border-t mt-1 pt-1" style={{ borderColor: C_BORDER }} />
-      <div className="flex justify-between gap-6">
-        <span style={{ color: C_MUTED }}>Total change</span>
-        <span className="font-semibold tabular-nums" style={{ color: r.total >= 0 ? C_POSITIVE : C_NEGATIVE }}>
-          {fmtSigned(r.total)}
-        </span>
+      <div className="border-t mt-1 pt-1 flex justify-between gap-6" style={{ borderColor: C_BORDER }}>
+        <span style={{ color: C_MUTED }}>Δ position value</span>
+        <span className="tabular-nums" style={{ color: C_MUTED }}>{fmtSigned(r.total)}</span>
       </div>
     </div>
   );
@@ -107,10 +106,11 @@ export default function PositionAttributionChart({ data }: Props) {
 
   const compact = containerWidth > 0 && containerWidth < 640;
 
-  // Drop rows with no meaningful contribution (below 1 € of absolute total).
-  const filtered = data.filter((r) => Math.abs(r.total) >= 1 || Math.abs(r.priceEffect) >= 1 || Math.abs(r.investEffect) >= 1);
-  // Winners on top, losers at bottom.
-  const sorted = [...filtered].sort((a, b) => b.total - a.total);
+  // Drop rows that contributed nothing in the window.
+  const filtered = data.filter((r) => Math.abs(r.priceEffect) >= 1 || Math.abs(r.investEffect) >= 1);
+  // Rank by gain/loss (price effect) — that's the actual money made or lost
+  // on each position, regardless of capital flow direction.
+  const sorted = [...filtered].sort((a, b) => b.priceEffect - a.priceEffect);
 
   if (!sorted.length) {
     return (
@@ -154,7 +154,6 @@ export default function PositionAttributionChart({ data }: Props) {
     if (!background || !payload || y == null || height == null || index == null) return null;
     const pe = payload.priceEffect;
     const ie = payload.investEffect;
-    const total = pe + ie;
     const bgX = background.x;
     const bgW = background.width;
     const toX = (v: number) => bgX + (bgW * (v - domainMin)) / (domainMax - domainMin);
@@ -201,8 +200,8 @@ export default function PositionAttributionChart({ data }: Props) {
         {investRect.w > 0 && (
           <rect x={investRect.x} y={y} width={investRect.w} height={height} fill={ieColor} rx={2} />
         )}
-        <text x={labelX} y={yMid} textAnchor={labelAnchor} fontSize={11} fontWeight={600} fill={total >= 0 ? C_POSITIVE : C_NEGATIVE}>
-          {fmtSigned(total)}
+        <text x={labelX} y={yMid} textAnchor={labelAnchor} fontSize={11} fontWeight={600} fill={pe >= 0 ? C_POSITIVE : C_NEGATIVE}>
+          {fmtSigned(pe)}
         </text>
         {/* Transparent hover overlay across the full row */}
         <rect
