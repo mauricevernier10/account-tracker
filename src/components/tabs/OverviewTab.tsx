@@ -8,7 +8,6 @@ import AllocationChart from "@/components/charts/AllocationChart";
 import ValueDecompositionChart, { type DecompositionDataPoint } from "@/components/charts/ValueDecompositionChart";
 import CumulativePriceEffectChart from "@/components/charts/CumulativePriceEffectChart";
 import MetricLineChart from "@/components/charts/MetricLineChart";
-import PositionAttributionChart, { type AttributionRow } from "@/components/charts/PositionAttributionChart";
 import {
   BENCHMARKS,
   computeCashflowBenchmark,
@@ -122,34 +121,6 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
     });
   }, [visiblePeriods, periods, breakdownByDate]);
 
-  // Aggregate per-position price/invest effects across the visible window.
-  // Same math as the decomposition (price = ΔV - net buys, invest = net buys),
-  // summed per ISIN/name across every period in the window.
-  const attributionData: AttributionRow[] = useMemo(() => {
-    const byName: Record<string, { price: number; invest: number }> = {};
-    for (const p of visiblePeriods) {
-      const b = breakdownByDate[p.date];
-      if (!b) continue;
-      for (const [name, eff] of Object.entries(b.priceByName)) {
-        if (!byName[name]) byName[name] = { price: 0, invest: 0 };
-        byName[name].price += eff;
-      }
-      for (const [name, eff] of Object.entries(b.investByName)) {
-        if (!byName[name]) byName[name] = { price: 0, invest: 0 };
-        byName[name].invest += eff;
-      }
-    }
-    return Object.entries(byName).map(([name, v]) => {
-      const priceEffect = Math.round(v.price * 100) / 100;
-      const investEffect = Math.round(v.invest * 100) / 100;
-      return {
-        name,
-        priceEffect,
-        investEffect,
-        total: Math.round((v.price + v.invest) * 100) / 100,
-      };
-    });
-  }, [visiblePeriods, breakdownByDate]);
 
   if (loading) {
     return <p className="text-muted-foreground text-sm">Loading portfolio data…</p>;
@@ -363,19 +334,6 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
         </CardContent>
       </Card>
 
-      {/* Per-position attribution over the visible window */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Return Attribution by Position</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Ranked by gain or loss over the selected window — that's the bold number on each row.
-            Green/red bars show price movement (your actual return); blue/amber bars show net capital you put into or pulled out of the position.
-          </p>
-        </CardHeader>
-        <CardContent className="pt-2">
-          <PositionAttributionChart data={attributionData} />
-        </CardContent>
-      </Card>
 
       {/* Cumulative price effect */}
       <Card>
