@@ -1,4 +1,4 @@
-import type { PeriodData } from "@/hooks/usePortfolioData";
+import type { PeriodData, Transaction } from "@/hooks/usePortfolioData";
 
 export interface BenchmarkPoint {
   date: string;
@@ -26,43 +26,70 @@ function priceOnOrBefore(
   return best;
 }
 
-// Cashflow-matched benchmark simulation.
-// For each period, invest netInvested into the benchmark at the benchmark's
-// price at the START of that period (= end of previous period), then read
-// benchmark value at the period's end date.
-// Returns one point per period (may be fewer if price data is unavailable).
+// Cashflow-matched benchmark simulation, transaction-level.
+// Walks every buy/sell transaction in date order, converting the EUR amount
+// into benchmark units at that day's benchmark close (or the nearest prior
+// trading day). At each portfolio period boundary, records the running unit
+// count × period-end benchmark price.
+//
+// Falls back to a lump-sum seed at period 0 only when the user's first
+// statement has no contributing transactions in the dataset (typical when
+// the very first imported PDF reflects pre-existing holdings whose buy
+// history isn't loaded). In that case, benchmark seeds at the same value
+// as the portfolio so both lines start equal.
 export function computeCashflowBenchmark(
   periods: PeriodData[],
+  transactions: Transaction[],
   prices: { date: string; close: number }[],
 ): BenchmarkPoint[] {
   if (!prices.length || !periods.length) return [];
 
-  const sorted = [...prices].sort((a, b) => a.date.localeCompare(b.date));
+  const sortedPrices = [...prices].sort((a, b) => a.date.localeCompare(b.date));
+  const sortedTx = transactions
+    .filter(
+      (tx) =>
+        (tx.direction === "buy" || tx.direction === "sell") &&
+        tx.amount_eur !== 0 &&
+        tx.amount_eur != null,
+    )
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  // Did any tx in the dataset land on or before the first period? If not,
+  // the first period is a pure pre-existing-portfolio snapshot and we seed.
+  const hasFirstPeriodTxs = sortedTx.some((tx) => tx.date <= periods[0].date);
 
   let units = 0;
+  let txIdx = 0;
   const result: BenchmarkPoint[] = [];
 
   for (let i = 0; i < periods.length; i++) {
     const period = periods[i];
-    const prevDate = i > 0 ? periods[i - 1].date : null;
 
-    // Buy/sell price = benchmark at start of period (previous month-end).
-    // For period 0 there is no previous period, so use the period-end price.
-    const transactionPrice =
-      prevDate != null
-        ? (priceOnOrBefore(sorted, prevDate) ?? priceOnOrBefore(sorted, period.date))
-        : priceOnOrBefore(sorted, period.date);
-
-    if (transactionPrice && period.netInvested !== 0) {
-      if (period.netInvested > 0) {
-        units += period.netInvested / transactionPrice;
+    // Apply every transaction on or before this period's end at its actual
+    // date. txIdx is monotonic so each tx is processed exactly once.
+    while (txIdx < sortedTx.length && sortedTx[txIdx].date <= period.date) {
+      const tx = sortedTx[txIdx++];
+      const txPrice = priceOnOrBefore(sortedPrices, tx.date);
+      if (!txPrice) continue; // benchmark has no price that early — skip
+      const amount = Math.abs(tx.amount_eur);
+      if (tx.direction === "buy") {
+        units += amount / txPrice;
       } else {
-        // Sell units equivalent to the outflow
-        units = Math.max(0, units - Math.abs(period.netInvested) / transactionPrice);
+        // Cap at zero: benchmark holds at most what's been bought.
+        units = Math.max(0, units - amount / txPrice);
       }
     }
 
-    const endPrice = priceOnOrBefore(sorted, period.date);
+    const endPrice = priceOnOrBefore(sortedPrices, period.date);
+
+    // Period-0 seed: only when the dataset contains no contributing
+    // transactions ≤ periods[0].date. Mirrors the previous behaviour and
+    // ensures both lines start at the same value when the user imports a
+    // standalone snapshot with no transaction backstory.
+    if (i === 0 && !hasFirstPeriodTxs && period.value > 0 && endPrice) {
+      units = period.value / endPrice;
+    }
+
     if (endPrice != null) {
       result.push({
         date: period.date,

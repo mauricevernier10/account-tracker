@@ -36,16 +36,22 @@ function fmtPct(n: number) {
 }
 
 export default function OverviewTab({ userId, refreshKey }: Props) {
-  const { periods, holdingsByDate, breakdownByDate, fifoByIsin, loading } = usePortfolioData(userId, refreshKey);
+  const { periods, holdingsByDate, breakdownByDate, fifoByIsin, transactions, loading } = usePortfolioData(userId, refreshKey);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>("1Y");
   const [benchmarkTicker, setBenchmarkTicker] = useState<BenchmarkTicker | "">("");
   const [benchmarkPrices, setBenchmarkPrices] = useState<{ date: string; close: number }[]>([]);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
 
+  // Earliest date the benchmark needs prices for: any transaction can predate
+  // the first holdings statement, and we still want it priced at its actual
+  // tx date in the cashflow simulation.
+  const earliestTxDate = transactions.length ? transactions[0].date : null;
+
   useEffect(() => {
     if (!benchmarkTicker || !periods.length) { setBenchmarkPrices([]); return; }
-    const from = periods[0].date;
+    const periodFrom = periods[0].date;
+    const from = earliestTxDate && earliestTxDate < periodFrom ? earliestTxDate : periodFrom;
     const to = periods[periods.length - 1].date;
     setBenchmarkLoading(true);
     fetch(`/api/benchmark?ticker=${benchmarkTicker}&from=${from}&to=${to}`)
@@ -53,12 +59,13 @@ export default function OverviewTab({ userId, refreshKey }: Props) {
       .then((d) => setBenchmarkPrices(d.prices ?? []))
       .catch(() => setBenchmarkPrices([]))
       .finally(() => setBenchmarkLoading(false));
-  }, [benchmarkTicker, periods.length, periods[0]?.date]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [benchmarkTicker, periods.length, periods[0]?.date, earliestTxDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Cashflow matching uses all periods so historical investments are accounted for.
+  // Transaction-level cashflow matching: each individual buy/sell is converted
+  // to benchmark units at that day's close.
   const benchmarkValues = useMemo(
-    () => computeCashflowBenchmark(periods, benchmarkPrices),
-    [periods, benchmarkPrices],
+    () => computeCashflowBenchmark(periods, transactions, benchmarkPrices),
+    [periods, transactions, benchmarkPrices],
   );
   const benchmarkByDate = useMemo(
     () => new Map(benchmarkValues.map((b) => [b.date, b.value])),

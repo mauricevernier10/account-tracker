@@ -64,6 +64,7 @@ export function usePortfolioData(userId: string, refreshKey = 0) {
   const [holdingsByDate, setHoldingsByDate] = useState<Record<string, Holding[]>>({});
   const [breakdownByDate, setBreakdownByDate] = useState<Record<string, PeriodBreakdown>>({});
   const [fifoByIsin, setFifoByIsin] = useState<Map<string, FifoResult>>(new Map());
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -209,11 +210,12 @@ export function usePortfolioData(userId: string, refreshKey = 0) {
       setHoldingsByDate(byDate);
       setBreakdownByDate(breakdown);
       setFifoByIsin(fifo);
+      setTransactions(allTxns);
       setLoading(false);
     }
 
     load();
   }, [userId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { periods, holdingsByDate, breakdownByDate, fifoByIsin, loading };
+  return { periods, holdingsByDate, breakdownByDate, fifoByIsin, transactions, loading };
 }
